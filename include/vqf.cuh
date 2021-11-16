@@ -19,10 +19,17 @@ typedef struct vqf {
 
 	vqf_block * blocks;
 
+	__device__ void lock_block(uint64_t lock);
+
+	__device__ void unlock_block(uint64_t lock);
+
+
 	__device__ void lock_blocks(uint64_t lock1, uint64_t lock2);
 
 	__device__ void unlock_blocks(uint64_t lock1, uint64_t lock2);
 
+
+	__device__ bool insert_empty(uint64_t item);
 
 	__device__ bool insert(uint64_t item);
 

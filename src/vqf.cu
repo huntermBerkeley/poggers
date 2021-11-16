@@ -16,18 +16,31 @@
 #include <assert.h>
 
 
+__device__ void vqf::lock_block(uint64_t lock){
+
+	while(atomicCAS(locks + lock, 0,1) != 0);	
+}
+
+__device__ void vqf::unlock_block(uint64_t lock){
+
+	while(atomicCAS(locks + lock, 1,0) != 1);	
+}
+
 __device__ void vqf::lock_blocks(uint64_t lock1, uint64_t lock2){
 
 
 	if (lock1 < lock2){
 
-		while(atomicCAS(locks + lock1, 0,1) == 1);
-		while(atomicCAS(locks + lock2, 0,1) == 1);
+		lock_block(lock1);
+		lock_block(lock2);
+		//while(atomicCAS(locks + lock2, 0,1) == 1);
 
 	} else {
 
-		while(atomicCAS(locks + lock2, 0,1) == 1);
-		while(atomicCAS(locks + lock1, 0,1) == 1);
+
+		lock_block(lock2);
+		lock_block(lock1);
+		
 	}
 
 	
@@ -38,20 +51,90 @@ __device__ void vqf::lock_blocks(uint64_t lock1, uint64_t lock2){
 __device__ void vqf::unlock_blocks(uint64_t lock1, uint64_t lock2){
 
 
-	if (lock1 < lock2){
+	if (lock1 > lock2){
 
-		while(atomicCAS(locks + lock1, 1,0) == 0);
-		while(atomicCAS(locks + lock2, 1,0) == 0);
+		unlock_block(lock1);
+		unlock_block(lock2);
 		
 	} else {
 
-		while(atomicCAS(locks + lock2, 1,0) == 0);
-		while(atomicCAS(locks + lock1, 1,0) == 0);
+		unlock_block(lock2);
+		unlock_block(lock1);
 	}
 	
 
 }
 
+__device__ bool vqf::insert_empty(uint64_t hash){
+
+   uint64_t block_index = (hash >> TAG_BITS) % num_blocks;
+
+
+
+   //this will generate a mask and get the tag bits
+   uint64_t tag = hash & ((1ULL << TAG_BITS) -1);
+   uint64_t alt_block_index = (((hash ^ (tag * 0x5bd1e995)) % (num_blocks*SLOTS_PER_BLOCK)) >> TAG_BITS) % num_blocks;
+
+   assert(block_index < num_blocks);
+
+
+   //external locks
+   //blocks[block_index].extra_lock(block_index);
+ 	
+ 	lock_block(block_index);
+
+
+ 	unlock_block(block_index);
+
+ 	if (block_index == alt_block_index) return;
+
+
+ 	lock_blocks(block_index, alt_block_index);
+
+   int fill_main = blocks[block_index].get_fill();
+
+   int fill_alt = blocks[alt_block_index].get_fill();
+
+
+   if (fill_main < fill_alt){
+
+
+   	unlock_block(alt_block_index);
+
+   	if (fill_main < SLOTS_PER_BLOCK-1){
+   		blocks[block_index].insert(tag);
+   	}
+
+   	unlock_block(block_index);
+
+   } else {
+
+   	unlock_block(block_index);
+
+   	if (fill_alt < SLOTS_PER_BLOCK-1){
+   		
+   	
+
+	   	blocks[alt_block_index].insert(tag);
+
+	   }
+
+	   unlock_block(alt_block_index);
+
+   }
+
+
+
+ 	//unlock_blocks(block_index, alt_block_index);
+
+
+   return true;
+
+
+
+
+
+}
 
 
 __device__ bool vqf::insert(uint64_t hash){
@@ -164,7 +247,7 @@ __device__ bool vqf::insert(uint64_t hash){
 
 
   
-   return true;;
+   return true;
 
 
 

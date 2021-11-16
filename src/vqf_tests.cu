@@ -43,7 +43,7 @@ __global__ void test_insert_kernel(vqf* my_vqf, uint64_t * vals, uint64_t nvals)
 	//if (tid > 0) return;
 	if (tid >= nvals) return;
 
-	my_vqf->insert(vals[tid]);
+	my_vqf->insert_empty(vals[tid]);
 
 	printf("tid %llu done\n", tid);
 
