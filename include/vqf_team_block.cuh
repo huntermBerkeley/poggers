@@ -17,10 +17,12 @@
 
 //need to reconcile # blocks to nums
 #define SLOTS_PER_BLOCK 48
+#define VIRTUAL_BUCKETS 80
 
 #elif TAG_BITS == 16
 
 #define SLOTS_PER_BLOCK 28
+#define VIRTUAL_BUCKETS 36 
 
 #endif
 
@@ -42,11 +44,11 @@ typedef struct __attribute__ ((__packed__)) vqf_block {
 
 	#elif TAG_BITS == 16
 
+		
 		volatile uint64_t md[1];
 		uint16_t tags[28];
 
 	#endif
-
 
 	__device__ void setup();
 
@@ -54,22 +56,21 @@ typedef struct __attribute__ ((__packed__)) vqf_block {
 	__device__ void lock(int warpID);
 
 
-	__device__ void extra_lock(uint64_t block_index);
 
-
-	__device__ void unlock();
+	__device__ void unlock(int warpID);
 	__device__ int max_capacity();
 
 	__device__ uint64_t shift_upper_bits(uint64_t bits, int cutoff);
 	__device__ uint64_t get_upper_bit(uint64_t bits);
 	__device__ void md_0_and_shift_right(int index);
 	__device__ int get_fill();
-	__device__ int select(volatile uint64_t* val_arr, int bit);
-	__device__ void insert(uint64_t item);
-
-	__device__ bool query(uint64_t item);
 
 
+	__device__ void insert(int warpID, uint64_t item);
+
+	__device__ bool query(int warpID, uint64_t item);
+
+	__device__ bool remove(int warpID, uint64_t item);
 	//remove related functions
 	__device__ uint64_t get_lower_bit(uint64_t bits);
 
@@ -78,7 +79,6 @@ typedef struct __attribute__ ((__packed__)) vqf_block {
 
 	__device__ void down_shift(int index);
 
-	__device__ bool remove(uint64_t item);
 
 	__device__ void printBlock();
 

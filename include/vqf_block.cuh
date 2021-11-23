@@ -17,10 +17,12 @@
 
 //need to reconcile # blocks to nums
 #define SLOTS_PER_BLOCK 48
+#define VIRTUAL_BUCKETS 80
 
 #elif TAG_BITS == 16
 
 #define SLOTS_PER_BLOCK 28
+#define VIRTUAL_BUCKETS 36 
 
 #endif
 

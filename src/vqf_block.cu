@@ -104,7 +104,7 @@ __host__ __device__ static inline int popcnt(uint64_t val)
 //set the original 1 bits of the block
 __device__ void vqf_block::setup(){
 
-	uint64_t mask = (1ULL << SLOTS_PER_BLOCK)-1;
+	uint64_t mask = (1ULL << VIRTUAL_BUCKETS)-1;
 
 	atomicOr((unsigned long long int *) md, mask);
 
@@ -433,7 +433,7 @@ __device__ int vqf_block::get_fill(){
 
 	#if TAG_BITS == 16
 	
-	return max_capacity() - __clzll(md[0] & UNLOCK_MASK);
+	return VIRTUAL_BUCKETS - __clzll(md[0] & UNLOCK_MASK);
 
 
 	#elif TAG_BITS == 8
@@ -446,7 +446,7 @@ __device__ int vqf_block::get_fill(){
 
 	}
 
-	return max_capacity() - upper_count;
+	return VIRTUAL_BUCKETS - upper_count;
 
 	#endif
 
@@ -458,15 +458,7 @@ __device__ int vqf_block::get_fill(){
 
 __device__ int vqf_block::max_capacity(){
 
-	#if TAG_BITS == 8
-
-	return 80;
-
-	#elif TAG_BITS == 16
-
-	return 36;
-
-	#endif
+	return VIRTUAL_BUCKETS;
 }
 
 //return the index of the ith bit in val 
@@ -527,7 +519,7 @@ __device__ int vqf_block::select(volatile uint64_t* val_arr, int bit){
 //to insert we need to figure out our block
 __device__ void vqf_block::insert(uint64_t item){
 
-	int slot = item % SLOTS_PER_BLOCK;
+	int slot = item % VIRTUAL_BUCKETS;
 
 	// - slot necessary - the buckets are logical constructs
 	//and don't correspond to true indices.
@@ -565,7 +557,10 @@ __device__ void vqf_block::insert(uint64_t item){
 
 __device__ bool vqf_block::query(uint64_t item){
 
-	int slot = item % SLOTS_PER_BLOCK;
+	int slot = item % VIRTUAL_BUCKETS;
+
+	//uint64_t md_old = md[0];
+
 
 	int start  = select(md, slot-1) - (slot -1);
 	if (slot == 0) start = 0;
@@ -579,10 +574,14 @@ __device__ bool vqf_block::query(uint64_t item){
 		uint16_t tag = item & 0xFFFF;
 	#endif
 
+	//assert(md_old == md[0]);
+
 	for (int i=start; i < end; i++){
 
 		if (tags[i] == tag) return true;
 	}
+
+
 
 	return false;
 
@@ -593,7 +592,7 @@ __device__ bool vqf_block::query(uint64_t item){
 //returns false if no item to remove
 __device__ bool vqf_block::remove(uint64_t item){
 
-	int slot = item % SLOTS_PER_BLOCK;
+	int slot = item % VIRTUAL_BUCKETS;
 
 	int start  = select(md, slot-1) - (slot -1);
 	if (slot == 0) start = 0;

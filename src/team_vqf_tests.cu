@@ -29,26 +29,35 @@
 #include <bitset>
 
 
-#include "include/vqf.cuh"
+#include "include/team_vqf.cuh"
 
 #include <openssl/rand.h>
 
 
 #define BLOCK_SIZE 512
 
-__global__ void test_insert_kernel(vqf* my_vqf, uint64_t * vals, uint64_t nvals){
+__global__ void test_insert_kernel(vqf* my_vqf, uint64_t * vals, uint64_t nvals, uint64_t * misses){
 
 	uint64_t tid = threadIdx.x + blockDim.x*blockIdx.x;
 
+
+	uint64_t teamID = tid / 32;
+	int warpID = tid % 32;
+
 	//if (tid > 0) return;
-	if (tid >= nvals) return;
+	if (teamID >= nvals) return;
 
-	if (my_vqf->insert(vals[tid])){
+	if (my_vqf->insert(warpID, vals[teamID])){
 
 
-		assert(my_vqf->query(vals[tid]));
+		assert(my_vqf->query(warpID, vals[teamID]));
 
-		//assert(my_vqf->remove(vals[tid]));
+		assert(my_vqf->remove(warpID, vals[teamID]));
+	} else {
+
+
+		if (warpID == 0)
+		atomicAdd( (unsigned long long int *) misses, 1);
 	}
 
 
@@ -90,6 +99,13 @@ int main(int argc, char** argv) {
 	cudaMemcpy(dev_vals, vals, nitems * sizeof(vals[0]), cudaMemcpyHostToDevice);
 
 
+	//allocate misses counter
+	uint64_t * misses;
+	cudaMallocManaged((void **)& misses, sizeof(uint64_t));
+
+	misses[0] = 0;
+
+
 	vqf * my_vqf =  build_vqf(1 << nbits);
 
 	cudaDeviceSynchronize();
@@ -97,7 +113,7 @@ int main(int argc, char** argv) {
 	auto start = std::chrono::high_resolution_clock::now();
 
 
-	test_insert_kernel<<<(nitems -1) / BLOCK_SIZE + 1, BLOCK_SIZE>>>(my_vqf, dev_vals, nitems);
+	test_insert_kernel<<<(32*nitems -1) / BLOCK_SIZE + 1, BLOCK_SIZE>>>(my_vqf, dev_vals, nitems, misses);
 
 
 	cudaDeviceSynchronize();
@@ -113,12 +129,13 @@ int main(int argc, char** argv) {
 
   	printf("Inserts per second: %f\n", nitems/diff.count());
 
-
+  	printf("Misses %llu\n", misses[0]);
 
 	free(vals);
 
 	cudaFree(dev_vals);
 
+	cudaFree(misses);
 
 	
 

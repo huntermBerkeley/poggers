@@ -5,10 +5,10 @@
 
 
 
-#include "include/vqf.cuh"
+#include "include/team_vqf.cuh"
 #include <cuda.h>
 #include <cuda_runtime_api.h>
-#include "include/vqf_block.cuh"
+#include "include/vqf_team_block.cuh"
 
 #include <iostream>
 
@@ -16,33 +16,46 @@
 #include <assert.h>
 
 
-__device__ void vqf::lock_block(uint64_t lock){
+__device__ void vqf::lock_block(int warpID, uint64_t lock){
 
-	//while(atomicCAS(locks + lock, 0,1) != 0);	
 
-	blocks[lock].lock();
+	// if (warpID == 0){
+
+	// 	while(atomicCAS(locks + lock, 0,1) != 0);	
+	// }
+	// __syncwarp();
+
+	blocks[lock].lock(warpID);
 }
 
-__device__ void vqf::unlock_block(uint64_t lock){
+__device__ void vqf::unlock_block(int warpID, uint64_t lock){
 
-	//while(atomicCAS(locks + lock, 1,0) != 1);	
-	blocks[lock].unlock();
+
+	// if (warpID == 0){
+
+	// 	while(atomicCAS(locks + lock, 1,0) != 1);	
+
+	// }
+
+	//__syncwarp();
+
+	blocks[lock].unlock(warpID);
 }
 
-__device__ void vqf::lock_blocks(uint64_t lock1, uint64_t lock2){
+__device__ void vqf::lock_blocks(int warpID, uint64_t lock1, uint64_t lock2){
 
 
 	if (lock1 < lock2){
 
-		lock_block(lock1);
-		lock_block(lock2);
+		lock_block(warpID, lock1);
+		lock_block(warpID, lock2);
 		//while(atomicCAS(locks + lock2, 0,1) == 1);
 
 	} else {
 
 
-		lock_block(lock2);
-		lock_block(lock1);
+		lock_block(warpID, lock2);
+		lock_block(warpID, lock1);
 		
 	}
 
@@ -51,24 +64,24 @@ __device__ void vqf::lock_blocks(uint64_t lock1, uint64_t lock2){
 
 }
 
-__device__ void vqf::unlock_blocks(uint64_t lock1, uint64_t lock2){
+__device__ void vqf::unlock_blocks(int warpID, uint64_t lock1, uint64_t lock2){
 
 
 	if (lock1 > lock2){
 
-		unlock_block(lock1);
-		unlock_block(lock2);
+		unlock_block(warpID, lock1);
+		unlock_block(warpID, lock2);
 		
 	} else {
 
-		unlock_block(lock2);
-		unlock_block(lock1);
+		unlock_block(warpID, lock2);
+		unlock_block(warpID, lock1);
 	}
 	
 
 }
 
-__device__ bool vqf::insert(uint64_t hash){
+__device__ bool vqf::insert(int warpID, uint64_t hash){
 
    uint64_t block_index = (hash >> TAG_BITS) % num_blocks;
 
@@ -84,15 +97,15 @@ __device__ bool vqf::insert(uint64_t hash){
    //external locks
    //blocks[block_index].extra_lock(block_index);
  	
- 	lock_block(block_index);
+ 	//lock_block(warpID, block_index);
 
 
- 	unlock_block(block_index);
+ 	//unlock_block(warpID, block_index);
 
- 	if (block_index == alt_block_index) return;
+ 	if (block_index == alt_block_index) return false;
 
 
- 	lock_blocks(block_index, alt_block_index);
+ 	lock_blocks(warpID, block_index, alt_block_index);
 
    int fill_main = blocks[block_index].get_fill();
 
@@ -104,17 +117,20 @@ __device__ bool vqf::insert(uint64_t hash){
    if (fill_main < fill_alt){
 
 
-   	unlock_block(alt_block_index);
+   	unlock_block(warpID, alt_block_index);
 
 
 
-   	if (fill_main < SLOTS_PER_BLOCK-1){
-   		blocks[block_index].insert(tag);
+   	//if (fill_main < SLOTS_PER_BLOCK-1){
+   	if (fill_main < 24){
+   		blocks[block_index].insert(warpID, tag);
 
    		toReturn = true;
 
    		int new_fill = blocks[block_index].get_fill();
    		if (new_fill != fill_main+1){
+
+   		blocks[block_index].printMetadata();
    		printf("Broken Fill: Block %llu, old %d new %d\n", block_index, fill_main, new_fill);
    		assert(blocks[block_index].get_fill() == fill_main+1);
    		}
@@ -122,18 +138,18 @@ __device__ bool vqf::insert(uint64_t hash){
 
    	}
 
-   	unlock_block(block_index);
+   	unlock_block(warpID, block_index);
 
 
    } else {
 
-   	unlock_block(block_index);
+   	unlock_block(warpID, block_index);
 
-   	if (fill_alt < SLOTS_PER_BLOCK-1){
+   	if (fill_alt < 24){
    		
    	
 
-	   	blocks[alt_block_index].insert(tag);
+	   	blocks[alt_block_index].insert(warpID, tag);
 
 	   	toReturn = true;
 
@@ -145,7 +161,7 @@ __device__ bool vqf::insert(uint64_t hash){
 
 	   }
 
-	   unlock_block(alt_block_index);
+	   unlock_block(warpID, alt_block_index);
 
    }
 
@@ -163,7 +179,7 @@ __device__ bool vqf::insert(uint64_t hash){
 }
 
 
-__device__ bool vqf::query(uint64_t hash){
+__device__ bool vqf::query(int warpID, uint64_t hash){
 
 	uint64_t block_index = (hash >> TAG_BITS) % num_blocks;
 
@@ -173,29 +189,29 @@ __device__ bool vqf::query(uint64_t hash){
 
    if (block_index == alt_block_index){
 
-   	lock_block(block_index);
+   	lock_block(warpID, block_index);
 
-   	//bool found = blocks[block_index].query(tag);
+   	bool found = blocks[block_index].query(warpID, tag);
 
-   	unlock_block(block_index);
+   	unlock_block(warpID, block_index);
 
    	return true;
 
 
    }
 
-   lock_blocks(block_index, alt_block_index);
+   lock_blocks(warpID, block_index, alt_block_index);
 
-   //bool found = blocks[block_index].query(tag) || blocks[alt_block_index].query(tag);
+   bool found = blocks[block_index].query(warpID, tag) || blocks[alt_block_index].query(warpID, tag);
 
-   unlock_blocks(block_index, alt_block_index);
+   unlock_blocks(warpID, block_index, alt_block_index);
 
    return true;
 
 }
 
 
-__device__ bool vqf::remove(uint64_t hash){
+__device__ bool vqf::remove(int warpID, uint64_t hash){
 
 
 	uint64_t block_index = (hash >> TAG_BITS) % num_blocks;
@@ -205,11 +221,11 @@ __device__ bool vqf::remove(uint64_t hash){
    uint64_t alt_block_index = (((hash ^ (tag * 0x5bd1e995)) % (num_blocks*SLOTS_PER_BLOCK)) >> TAG_BITS) % num_blocks;
 
 
-   lock_block(block_index);
+   lock_block(warpID, block_index);
 
-   bool found = blocks[block_index].remove(tag);
+   bool found = blocks[block_index].remove(warpID, tag);
 
-   unlock_block(block_index);
+   unlock_block(warpID, block_index);
 
    //copy could be deleted from this instance
 
@@ -217,11 +233,11 @@ __device__ bool vqf::remove(uint64_t hash){
    	return true;
    }
 
-   lock_block(alt_block_index);
+   lock_block(warpID, alt_block_index);
 
-   found = blocks[alt_block_index].remove(tag);
+   found = blocks[alt_block_index].remove(warpID, tag);
 
-   unlock_block(alt_block_index);
+   unlock_block(warpID, alt_block_index);
 
    return found;
 

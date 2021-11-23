@@ -1,4 +1,4 @@
-TARGETS=vqf_tests locking_vqf_test shared_test
+TARGETS=team_test shared_test team_vqf_tests
 
 ifdef D
 	DEBUG=-g -G
@@ -50,9 +50,18 @@ all: $(TARGETS)
 test:							$(OBJDIR)/test.o \
 								$(OBJDIR)/vqf_block.o
 
+team_test:							$(OBJDIR)/team_test.o \
+								$(OBJDIR)/vqf_team_block.o \
+								$(OBJDIR)/warp_utils.o
+
 vqf_tests:						$(OBJDIR)/vqf_tests.o \
 								$(OBJDIR)/vqf.o \
 								$(OBJDIR)/vqf_block.o
+
+team_vqf_tests:						$(OBJDIR)/team_vqf_tests.o \
+								$(OBJDIR)/team_vqf.o \
+								$(OBJDIR)/vqf_team_block.o \
+								$(OBJDIR)/warp_utils.o
 
 locking_vqf_test:						$(OBJDIR)/locking_vqf_test.o \
 								$(OBJDIR)/vqf.o \
@@ -68,6 +77,9 @@ shared_test:					$(OBJDIR)/shared_test.o
 
 $(OBJDIR)/vqf_block.o: $(LOC_SRC)/vqf_block.cu $(LOC_INCLUDE)/vqf_block.cuh
 $(OBJDIR)/vqf.o: $(LOC_SRC)/vqf.cu $(LOC_INCLUDE)/vqf.cuh $(LOC_SRC)/vqf_block.cu $(LOC_INCLUDE)/vqf_block.cuh
+$(OBJDIR)/vqf_team_block.o: $(LOC_SRC)/vqf_team_block.cu $(LOC_INCLUDE)/vqf_team_block.cuh
+$(OBJDIR)/warp_utils.o: $(LOC_SRC)/warp_utils.cu $(LOC_INCLUDE)/warp_utils.cuh
+$(OBJDIR)/team_vqf.o: $(LOC_SRC)/team_vqf.cu $(LOC_INCLUDE)/team_vqf.cuh $(LOC_SRC)/vqf_team_block.cu $(LOC_INCLUDE)/vqf_team_block.cuh
 
 #
 # generic build rules

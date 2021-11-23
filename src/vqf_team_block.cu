@@ -3,7 +3,8 @@
 
 #include <cuda.h>
 #include <cuda_runtime_api.h>
-#include "include/vqf_block.cuh"
+#include "include/vqf_team_block.cuh"
+#include "include/warp_utils.cuh"
 
 
 //extra stuff
@@ -39,45 +40,6 @@
 
 //I'm putting the bit manipulation here atm
 
-//a variant of memmove that compares the two pointers
-__device__ void gpu_memmove(void* dst, const void* src, size_t n)
-{
-	//printf("Launching memmove\n");
-	//todo: allocate space per thread for this buffer before launching the kernel
-
-	char * char_dst = (char *) dst;
-	char * char_src = (char *) src;
-
-  //double check this,
-  //think it is just > since dst+n does not get copied
-
-  
-
-  if (char_src+n > char_dst && char_src < char_dst){
-
-  	//copy backwards 
-  	for (int i =n-1; i >= 0; i--){
-
-
-
-  		char_dst[i] = char_src[i];
-
-  	}
-
-  } else {
-
-  	//copy regular
-  	for (int i =0; i<n; i++){
-  		char_dst[i] = char_src[i];
-  	}
-
-
-  }
-
-  //free(temp_buffer);
-
-}
-
 __host__ __device__ static inline int popcnt(uint64_t val)
 {
 #ifdef __CUDA_ARCH__
@@ -102,9 +64,10 @@ __host__ __device__ static inline int popcnt(uint64_t val)
 
 
 //set the original 1 bits of the block
+//this is done on a per thread level
 __device__ void vqf_block::setup(){
 
-	uint64_t mask = (1ULL << SLOTS_PER_BLOCK)-1;
+	uint64_t mask = (1ULL << VIRTUAL_BUCKETS)-1;
 
 	atomicOr((unsigned long long int *) md, mask);
 
@@ -189,52 +152,17 @@ __device__ void vqf_block::lock(int warpID){
 	}
 
 	//and everyone synchronizes
+	__syncwarp();
 	
 
 }
 
 
-__device__ void vqf_block::extra_lock(uint64_t block_index){
+__device__ void vqf_block::unlock(int warpID){
 
-	uint64_t * data;
-	#if TAG_BITS == 8
-		data = (uint64_t *) (md + 1);
-	#elif TAG_BITS == 16
-		data = (uint64_t *) md;
-	#endif
-
-	//atomicOr should return 0XXXXXXXXXX - expect the first bit to be zero
-	//this means lock_mask & md should be equal to 0 to unlock
-
-	//uint64_t out =	atomicOr((unsigned long long int *) data, LOCK_MASK);
-
-	uint64_t val = atomicOr((unsigned long long int *) data, LOCK_MASK) & LOCK_MASK;
+	if (warpID ==0){
 
 
-//	uint64_t counter = 0;
-
-	while (val != 0){
-
-
-		// counter += 1;
-
-
-		// if (counter > 10000000){
-
-		// 	//printBlock();
-
-		// 	printf("Block broke at Block index: %llu\n", block_index);
-
-		// 	return;
-		// }
-
-		val = atomicOr((unsigned long long int *) data, LOCK_MASK) & LOCK_MASK;
-
-	} 
-
-}
-
-__device__ void vqf_block::unlock(){
 
 	uint64_t * data;
 	#if TAG_BITS == 8
@@ -246,6 +174,8 @@ __device__ void vqf_block::unlock(){
 	//double check .ptx on this
 	//could cut down cycles a bit if it isn't short
 	atomicAnd((unsigned long long int *) data, UNLOCK_MASK);
+
+	}
 
 }
 
@@ -443,7 +373,7 @@ __device__ int vqf_block::get_fill(){
 
 	#if TAG_BITS == 16
 	
-	return max_capacity() - __clzll(md[0] & UNLOCK_MASK);
+	return SLOTS_PER_BLOCK - __clzll(md[0] & UNLOCK_MASK);
 
 
 	#elif TAG_BITS == 8
@@ -456,7 +386,7 @@ __device__ int vqf_block::get_fill(){
 
 	}
 
-	return max_capacity() - upper_count;
+	return SLOTS_PER_BLOCK - upper_count;
 
 	#endif
 
@@ -468,15 +398,7 @@ __device__ int vqf_block::get_fill(){
 
 __device__ int vqf_block::max_capacity(){
 
-	#if TAG_BITS == 8
-
-	return 80;
-
-	#elif TAG_BITS == 16
-
-	return 36;
-
-	#endif
+	return SLOTS_PER_BLOCK;
 }
 
 //return the index of the ith bit in val 
@@ -484,64 +406,23 @@ __device__ int vqf_block::max_capacity(){
 // mask the first k bits
 // such that popcount popcount(val & mask == i);
 //return -1 if no such index
-__device__ int vqf_block::select(volatile uint64_t* val_arr, int bit){
-
-
-	//slow version
-	//I can do this with a precompute table
-	//should save cycles?
-	uint64_t val = val_arr[0];
-
-	#if TAG_BITS == 8
-
-	//need to check which metadata bit we're looking at
-
-	int offset = 0;
-
-	if (popcnt(val_arr[0]) < bit) {
-
-		val = val_arr[0];
-		offset = 0;
-
-	} else {
-
-		val = val_arr[1];
-		offset = 64;
-	}
-
-	#endif
-
-
-
-
-	for (int i=0; i< bit; i++){
-		val = val & (val-1);
-	}
-
-	//prolly need a ffsll here
-
-	#if TAG_BITS == 8
-
-	uint64_t intermediate = val & ~(val-1);
-
-	return __ffsll(intermediate)+offset -1;
-
-	#endif 
-
-	uint64_t intermediate = val & ~(val-1);
-
-	return __ffsll(intermediate) -1;
-
-}
 
 //to insert we need to figure out our block
-__device__ void vqf_block::insert(uint64_t item){
+__device__ void vqf_block::insert(int warpID, uint64_t item){
 
-	int slot = item % SLOTS_PER_BLOCK;
+	int slot = item % VIRTUAL_BUCKETS;
 
 	// - slot necessary - the buckets are logical constructs
 	//and don't correspond to true indices.
-	int index = select(md, slot) - slot;
+
+
+	//md_bit is the metadata index to modify
+	//index is the slot we want to insert into the tags
+	int md_bit = warp_utils::select(warpID, md[0], slot);
+
+
+	assert(md_bit != -1);
+	int index = md_bit - slot;
 
 	#if TAG_BITS == 8
 		uint8_t tag = item & 0xFF;
@@ -561,27 +442,40 @@ __device__ void vqf_block::insert(uint64_t item){
 	//there are 
 
 	//dest, src, slots
-	gpu_memmove(tags+index+1, tags+index, num_slots_to_shift*sizeof(tags[0]));
+	warp_utils::warp_memmove(warpID, tags+index+1, tags+index, num_slots_to_shift*sizeof(tags[0]));
 	//push items up and over
+
+
+	if (warpID == 0){
 	tags[index] = tag;
 
-	md_0_and_shift_right(index + slot);
+	md_0_and_shift_right(md_bit);
+
+	}
+
+	__syncwarp();
 
 	__threadfence();
+
+	//sync after fence so we know all warps are done writing
+	__syncwarp();
+
+
+	
 
 
 
 }
 
-__device__ bool vqf_block::query(uint64_t item){
+__device__ bool vqf_block::query(int warpID, uint64_t item){
 
-	int slot = item % SLOTS_PER_BLOCK;
+	int slot = item % VIRTUAL_BUCKETS;
 
-	int start  = select(md, slot-1) - (slot -1);
+	int start  = warp_utils::select(warpID, md[0], slot-1) - (slot -1);
 	if (slot == 0) start = 0;
 	
 
-	int end = select(md, slot) - slot;
+	int end = warp_utils::select(warpID, md[0], slot) - slot;
 
 	#if TAG_BITS == 8
 		uint8_t tag = item & 0xFF;
@@ -589,27 +483,34 @@ __device__ bool vqf_block::query(uint64_t item){
 		uint16_t tag = item & 0xFFFF;
 	#endif
 
-	for (int i=start; i < end; i++){
 
-		if (tags[i] == tag) return true;
+	int ballot = 0;
+	for (int i=start+warpID; i < end; i+=32){
+
+		if (tags[i] == tag) ballot = 1;
 	}
 
-	return false;
+	unsigned int ballot_result = __ballot_sync(0xfffffff, ballot);
+
+
+	//if ballot is 0 no one found
+
+	return !(ballot_result == 0);
 
 }
 
 
 //attempt to remove an item with tag item, 
 //returns false if no item to remove
-__device__ bool vqf_block::remove(uint64_t item){
+__device__ bool vqf_block::remove(int warpID, uint64_t item){
 
-	int slot = item % SLOTS_PER_BLOCK;
+	int slot = item % VIRTUAL_BUCKETS;
 
-	int start  = select(md, slot-1) - (slot -1);
+	int start = warp_utils::select(warpID, md[0], slot-1) - (slot -1);
 	if (slot == 0) start = 0;
 	
 
-	int end = select(md, slot) - slot;
+	int end = warp_utils::select(warpID, md[0], slot) - slot;
 
 	#if TAG_BITS == 8
 		uint8_t tag = item & 0xFF;
@@ -617,31 +518,51 @@ __device__ bool vqf_block::remove(uint64_t item){
 		uint16_t tag = item & 0xFFFF;
 	#endif
 
-	for (int i=start; i < end; i++){
+
+	int ballot = 0;
+
+	int insert_index = 0;
+	for (int i=start+warpID; i < end; i+=32){
 
 		if (tags[i] == tag){
+			ballot = 1;
+			insert_index = i;
+		}
 
-			//we have an item!
 
-			//shift the slots back
-
-
-			//rewrite the metadata
-			int num_slots_to_shift = get_fill() - i;
-
-			gpu_memmove(tags+i, tags+i+1, num_slots_to_shift*sizeof(tags[0]));
-
-			down_shift(i+slot);
-			__threadfence();
-
-			//return item cleaned
-			//since this cuts the loop, it should be memory safe
-			return true;
-
-		} 
 	}
 
-	return false;
+
+	//synchronize based on ballot, propogate starting index
+
+	unsigned int ballot_result = __ballot_sync(0xfffffff, ballot);
+
+
+	int thread_to_query = __ffs(ballot_result)-1;
+
+	//Could not remove!
+	if (thread_to_query == -1) return false;
+
+
+	int remove_index = __shfl_sync(0xfffffff, insert_index, thread_to_query); 
+
+	int num_slots_to_shift = get_fill() - remove_index;
+
+
+	//do the reverse move
+	warp_utils::warp_memmove(warpID, tags+remove_index, tags+remove_index+1, num_slots_to_shift*sizeof(tags[0]));
+
+	//tags are shrunk, now change metadata
+	if (warpID == 0){
+
+		down_shift(remove_index+slot);
+	}
+
+	__syncwarp();
+	__threadfence();
+	__syncwarp();
+
+	return true;
 
 }
 
