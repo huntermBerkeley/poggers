@@ -22,7 +22,7 @@
 #elif TAG_BITS == 16
 
 #define SLOTS_PER_BLOCK 28
-#define VIRTUAL_BUCKETS 36 
+#define VIRTUAL_BUCKETS 35 
 
 #endif
 
@@ -83,6 +83,9 @@ typedef struct __attribute__ ((__packed__)) vqf_block {
 	__device__ void printBlock();
 
 	__device__ void printMetadata();
+
+
+	__device__ bool assert_consistency();
 
 
 } vqf_block;

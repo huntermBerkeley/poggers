@@ -30,6 +30,10 @@ __device__ int select(int warpID, uint64_t val, int bit);
 
 __device__ void warp_memmove(int warpID, void* dst, const void* src, size_t n);
 
+__device__ void block_8_memmove_insert(int warpID, uint16_t * tags, uint16_t tag, int index);
+
+__device__ void block_8_memmove_remove(int warpID, uint16_t * tags, int index);
+
 
 }
 

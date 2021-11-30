@@ -34,9 +34,24 @@
 #include <openssl/rand.h>
 
 
+//included thrust items for sorting
+#include <thrust/sort.h>
+#include <thrust/execution_policy.h>
+#include <thrust/device_vector.h>
+
+
 #define BLOCK_SIZE 1024
 
-__global__ void test_insert_kernel(vqf* my_vqf, uint64_t * vals, uint64_t nvals, uint64_t * misses){
+
+ __host__ void sort_device_vector(uint64_t * vals, uint64_t nvals){
+
+
+ 	thrust::sort(thrust::device, vals, vals+nvals);
+
+ 	cudaDeviceSynchronize();
+ }
+
+__global__ void test_correctness_kernel(vqf* my_vqf, uint64_t * vals, uint64_t nvals, uint64_t * misses){
 
 	uint64_t tid = threadIdx.x + blockDim.x*blockIdx.x;
 
@@ -45,15 +60,31 @@ __global__ void test_insert_kernel(vqf* my_vqf, uint64_t * vals, uint64_t nvals,
 	int warpID = tid % 32;
 
 	//if (tid > 0) return;
-	if (teamID >= nvals) return;
-
-	if (!my_vqf->insert(warpID, vals[teamID])){
+	if (teamID != 0) return;
 
 
+	for (uint64_t i = 0; i < nvals; i++){
 
-		if (warpID == 0)
-		atomicAdd( (unsigned long long int *) misses, 1);
+			if (my_vqf->insert(warpID, i)){
+
+
+			assert(my_vqf->query(warpID, i));
+
+
+			assert(my_vqf->remove(warpID, i));
+
+			} else {
+
+
+				assert(!my_vqf->query(warpID, i));
+
+				assert(!my_vqf->remove(warpID, i));
+
+			}
+
 	}
+
+
 
 
 
@@ -140,12 +171,12 @@ __global__ void test_remove_kernel(vqf* my_vqf, uint64_t * vals, uint64_t nvals,
 
 
 
-__host__ void insert_timing(vqf* my_vqf, uint64_t * vals, uint64_t nvals, uint64_t * misses){
+__host__ void correctness_timing(vqf* my_vqf, uint64_t * vals, uint64_t nvals, uint64_t * misses){
 
 	auto start = std::chrono::high_resolution_clock::now();
 
 
-	test_insert_kernel<<<(32*nvals -1) / BLOCK_SIZE + 1, BLOCK_SIZE>>>(my_vqf, vals, nvals, misses);
+	test_correctness_kernel<<<1, 32>>>(my_vqf, vals, nvals, misses);
 
 
 	cudaDeviceSynchronize();
@@ -277,16 +308,15 @@ int main(int argc, char** argv) {
 	vqf * my_vqf =  build_vqf(1 << nbits);
 
 
+	sort_device_vector(dev_vals, nitems);
+
+
 	printf("Setup done\n");
 
 	cudaDeviceSynchronize();
 
 	
-	insert_timing(my_vqf, dev_vals, nitems,  misses);
-
-	query_timing(my_vqf, dev_vals, nitems,  misses);
-
-	remove_timing(my_vqf, dev_vals, nitems,  misses);
+	correctness_timing(my_vqf, dev_vals, nitems,  misses);
 
 	cudaDeviceSynchronize();
 	//and insert

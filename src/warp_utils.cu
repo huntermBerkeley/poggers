@@ -315,4 +315,72 @@ __device__ void warp_memmove(int warpID, void* dst, const void* src, size_t n){
 }
 
 
+//shuffle items to the right
+//this code is as specialised as possible
+//to reduce the sass code generated for it
+//warp_memmove is 294 lines with ~50% sync
+//only 28 tags, so if you're below we don't care
+__device__ void block_8_memmove_insert(int warpID, uint16_t * tags, uint16_t tag, int index){
+
+    uint16_t old;
+
+	bool participating = warpID >= index && warpID < 27;
+
+	if (participating){
+
+
+		//gather indices
+		old = tags[warpID];
+
+	}
+	__syncwarp();
+
+
+	if (participating){
+		tags[warpID+1] = old;
+		tags[index] = tag;
+	}
+
+	__syncwarp();
+
+	return;
+
+}
+
+
+//shuffle items to the right
+//this code is as specialised as possible
+//to reduce the sass code generated for it
+//warp_memmove is 294 lines with ~50% sync
+//only 28 tags, so if you're below we don't care
+__device__ void block_8_memmove_remove(int warpID, uint16_t * tags, int index){
+
+    uint16_t old;
+
+	bool participating = warpID > index && warpID < 28;
+
+	if (participating){
+
+
+		//gather indices
+		old = tags[warpID];
+
+	}
+	__syncwarp();
+
+
+	if (participating){
+		tags[warpID-1] = old;
+	}
+
+	__syncwarp();
+
+	return;
+
+}
+
+
+
+
+
 }

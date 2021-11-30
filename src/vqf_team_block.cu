@@ -421,7 +421,17 @@ __device__ void vqf_block::insert(int warpID, uint64_t item){
 	int md_bit = warp_utils::select(warpID, md[0], slot);
 
 
+	if (md_bit == -1){
+
+		printf("%d Metadata %llu\n", warpID, md[0]);
+		printf("%d slot %d\n", warpID, slot);
+
+	}
 	assert(md_bit != -1);
+
+
+
+
 	int index = md_bit - slot;
 
 	#if TAG_BITS == 8
@@ -442,9 +452,21 @@ __device__ void vqf_block::insert(int warpID, uint64_t item){
 	//there are 
 
 	//dest, src, slots
-	warp_utils::warp_memmove(warpID, tags+index+1, tags+index, num_slots_to_shift*sizeof(tags[0]));
-	//push items up and over
 
+	#if TAG_BITS == 16
+
+	warp_utils::block_8_memmove_insert(warpID, tags, tag, index);
+
+
+	if (warpID == 0)
+	md_0_and_shift_right(md_bit);
+
+
+	__syncwarp();
+
+	#else 
+
+	warp_utils::warp_memmove(warpID, tags+index+1, tags+index, num_slots_to_shift*sizeof(tags[0]));
 
 	if (warpID == 0){
 	tags[index] = tag;
@@ -454,6 +476,11 @@ __device__ void vqf_block::insert(int warpID, uint64_t item){
 	}
 
 	__syncwarp();
+
+	#endif
+
+	
+	//push items up and over
 
 	__threadfence();
 
@@ -489,6 +516,7 @@ __device__ bool vqf_block::query(int warpID, uint64_t item){
 
 		if (tags[i] == tag) ballot = 1;
 	}
+	__syncwarp();
 
 	unsigned int ballot_result = __ballot_sync(0xfffffff, ballot);
 
@@ -550,9 +578,22 @@ __device__ bool vqf_block::remove(int warpID, uint64_t item){
 
 
 	//do the reverse move
+
+
+	#if TAG_BITS == 16 
+
+
+	warp_utils::block_8_memmove_remove(warpID, tags, remove_index);
+
+	#else
+
 	warp_utils::warp_memmove(warpID, tags+remove_index, tags+remove_index+1, num_slots_to_shift*sizeof(tags[0]));
 
 	//tags are shrunk, now change metadata
+	
+
+	#endif
+
 	if (warpID == 0){
 
 		down_shift(remove_index+slot);
@@ -605,4 +646,11 @@ __device__ void vqf_block::printMetadata(){
 		printf("%d", md[0] & (1<<i));
 	}
 	printf("\n");
+}
+
+
+__device__ bool vqf_block::assert_consistency(){
+
+
+	return(popcnt(md[0]) == VIRTUAL_BUCKETS + 1);
 }

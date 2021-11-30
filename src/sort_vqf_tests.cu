@@ -34,7 +34,24 @@
 #include <openssl/rand.h>
 
 
+//included thrust items for sorting
+#include <thrust/sort.h>
+#include <thrust/execution_policy.h>
+#include <thrust/device_vector.h>
+
+
 #define BLOCK_SIZE 1024
+
+#define GROUP_SIZE 8
+
+
+ __host__ void sort_device_vector(uint64_t * vals, uint64_t nvals){
+
+
+ 	thrust::sort(thrust::device, vals, vals+nvals);
+
+ 	cudaDeviceSynchronize();
+ }
 
 __global__ void test_insert_kernel(vqf* my_vqf, uint64_t * vals, uint64_t nvals, uint64_t * misses){
 
@@ -45,15 +62,27 @@ __global__ void test_insert_kernel(vqf* my_vqf, uint64_t * vals, uint64_t nvals,
 	int warpID = tid % 32;
 
 	//if (tid > 0) return;
-	if (teamID >= nvals) return;
+	if (teamID*GROUP_SIZE >= nvals) return;
 
-	if (!my_vqf->insert(warpID, vals[teamID])){
+
+
+	for (uint64_t i = teamID*GROUP_SIZE; i < (teamID+1)*GROUP_SIZE; i++){
+
+		if (i >= nvals) break;
+
+		if (!my_vqf->insert(warpID, vals[i])){
 
 
 
 		if (warpID == 0)
 		atomicAdd( (unsigned long long int *) misses, 1);
+
+		}
+
+
 	}
+
+
 
 
 
@@ -79,28 +108,29 @@ __global__ void test_query_kernel(vqf* my_vqf, uint64_t * vals, uint64_t nvals, 
 	uint64_t teamID = tid / 32;
 	int warpID = tid % 32;
 
-	//if (tid > 0) return;
-	if (teamID >= nvals) return;
+
+
+	if (teamID*GROUP_SIZE >= nvals) return;
 
 
 
-	if(!my_vqf->query(warpID, vals[teamID])){
+	for (uint64_t i = teamID*GROUP_SIZE; i < (teamID+1)*GROUP_SIZE; i++){
+
+		if (i >= nvals) break;
+
+		if (!my_vqf->query(warpID, vals[i])){
+
+
+
 		if (warpID == 0)
 		atomicAdd( (unsigned long long int *) misses, 1);
+
+		}
+
+
 	}
 
 
-
-	//printf("tid %llu done\n", tid);
-
-	// //does a single thread have this issue?
-	// for (uint64_t i =0; i< nvals; i++){
-
-	// 	assert(vals[i] != 0);
-
-	// 	my_vqf->insert(vals[i]);
-
-	// }
 	
 }
 
@@ -114,28 +144,28 @@ __global__ void test_remove_kernel(vqf* my_vqf, uint64_t * vals, uint64_t nvals,
 	int warpID = tid % 32;
 
 	//if (tid > 0) return;
-	if (teamID >= nvals) return;
+	if (teamID*GROUP_SIZE >= nvals) return;
 
 
 
-	if(!my_vqf->remove(warpID, vals[teamID])){
+	for (uint64_t i = teamID*GROUP_SIZE; i < (teamID+1)*GROUP_SIZE; i++){
+
+		if (i >= nvals) break;
+
+		if (!my_vqf->remove(warpID, vals[i])){
+
+
+
 		if (warpID == 0)
 		atomicAdd( (unsigned long long int *) misses, 1);
+
+		}
+
+
 	}
 
 
 
-	//printf("tid %llu done\n", tid);
-
-	// //does a single thread have this issue?
-	// for (uint64_t i =0; i< nvals; i++){
-
-	// 	assert(vals[i] != 0);
-
-	// 	my_vqf->insert(vals[i]);
-
-	// }
-	
 }
 
 
@@ -275,6 +305,9 @@ int main(int argc, char** argv) {
 
 
 	vqf * my_vqf =  build_vqf(1 << nbits);
+
+
+	sort_device_vector(dev_vals, nitems);
 
 
 	printf("Setup done\n");

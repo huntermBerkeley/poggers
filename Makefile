@@ -1,4 +1,4 @@
-TARGETS=team_test shared_test team_vqf_tests
+TARGETS=sort_vqf_tests team_vqf_tests vqf_correctness_check
 
 ifdef D
 	DEBUG=-g -G
@@ -32,7 +32,7 @@ LD = nvcc
 
 CXXFLAGS = -Wall $(DEBUG) $(PROFILE) $(OPT) $(ARCH) -m64 -I. -Iinclude
 
-CUFLAGS = $(DEBUG) -arch=sm_70 -rdc=true -I. -Iinclude
+CUFLAGS = $(DEBUG) $(OPT) -arch=sm_70 -rdc=true -I. -Iinclude
 
 CUDALINK = -L/usr/common/software/sles15_cgpu/cuda/11.1.1/lib64/compat -L/usr/common/software/sles15_cgpu/cuda/11.1.1/lib64 -L/usr/common/software/sles15_cgpu/cuda/11.1.1/extras/CUPTI/lib6 -lcurand --nvlink-options -suppress-stack-size-warning
 
@@ -59,6 +59,17 @@ vqf_tests:						$(OBJDIR)/vqf_tests.o \
 								$(OBJDIR)/vqf_block.o
 
 team_vqf_tests:						$(OBJDIR)/team_vqf_tests.o \
+								$(OBJDIR)/team_vqf.o \
+								$(OBJDIR)/vqf_team_block.o \
+								$(OBJDIR)/warp_utils.o
+
+
+sort_vqf_tests:						$(OBJDIR)/sort_vqf_tests.o \
+								$(OBJDIR)/team_vqf.o \
+								$(OBJDIR)/vqf_team_block.o \
+								$(OBJDIR)/warp_utils.o
+
+vqf_correctness_check:				$(OBJDIR)/vqf_correctness_check.o \
 								$(OBJDIR)/team_vqf.o \
 								$(OBJDIR)/vqf_team_block.o \
 								$(OBJDIR)/warp_utils.o

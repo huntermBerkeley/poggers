@@ -16,6 +16,9 @@
 #include <assert.h>
 
 
+#define DEBUG_ASSERTS 1
+#define MAX_FILL 28
+
 __device__ void vqf::lock_block(int warpID, uint64_t lock){
 
 
@@ -97,12 +100,73 @@ __device__ bool vqf::insert(int warpID, uint64_t hash){
    //external locks
    //blocks[block_index].extra_lock(block_index);
  	
- 	//lock_block(warpID, block_index);
+ 	lock_block(warpID, block_index);
+ 	int side_fill = blocks[block_index].get_fill();
+
+ 	if (side_fill < 20 || block_index == alt_block_index){
+
+ 		#if DEBUG_ASSERTS
+ 		int old_fill = blocks[block_index].get_fill();
 
 
- 	//unlock_block(warpID, block_index);
+ 		if (!blocks[block_index].assert_consistency()){
 
- 	if (block_index == alt_block_index) return false;
+ 			printf("Oh No!\n");
+
+ 		}
+
+ 		assert(blocks[block_index].assert_consistency());
+
+ 		uint64_t md_before = blocks[block_index].md[0];
+ 		#endif
+
+
+ 		
+
+
+
+ 		if (side_fill < MAX_FILL){
+ 			blocks[block_index].insert(warpID, tag);
+
+ 			#if DEBUG_ASSERTS
+
+
+ 			if (blocks[block_index].get_fill() != old_fill+1){
+
+ 				printf("tag that broke: %llu, %d\n", blocks[block_index].md[0], tag);
+ 			}
+	 		assert(blocks[block_index].get_fill() == old_fill+1);
+
+	 		if (!blocks[block_index].assert_consistency()){
+
+	 			printf("old %llu -> new %llu, tag that broke: %d\n", md_before, blocks[block_index].md[0], tag);
+
+	 			assert(blocks[block_index].assert_consistency());
+
+	 		}
+
+	 		#endif
+
+
+ 			unlock_block(warpID, block_index);
+
+ 			return true;
+
+ 		} else {
+
+ 			unlock_block(warpID, block_index);
+ 			return false;
+ 		}
+
+ 		
+
+
+ 		
+
+ 	}
+
+
+ 	unlock_block(warpID, block_index);
 
 
  	lock_blocks(warpID, block_index, alt_block_index);
@@ -122,11 +186,13 @@ __device__ bool vqf::insert(int warpID, uint64_t hash){
 
 
    	//if (fill_main < SLOTS_PER_BLOCK-1){
-   	if (fill_main < 24){
+   	if (fill_main < MAX_FILL){
    		blocks[block_index].insert(warpID, tag);
 
    		toReturn = true;
 
+
+   		#if DEBUG_ASSERTS
    		int new_fill = blocks[block_index].get_fill();
    		if (new_fill != fill_main+1){
 
@@ -134,7 +200,7 @@ __device__ bool vqf::insert(int warpID, uint64_t hash){
    		printf("Broken Fill: Block %llu, old %d new %d\n", block_index, fill_main, new_fill);
    		assert(blocks[block_index].get_fill() == fill_main+1);
    		}
-   		
+   		#endif
 
    	}
 
@@ -145,19 +211,29 @@ __device__ bool vqf::insert(int warpID, uint64_t hash){
 
    	unlock_block(warpID, block_index);
 
-   	if (fill_alt < 24){
+   	if (fill_alt < MAX_FILL){
    		
+   		#if DEBUG_ASSERTS
+
+   		uint64_t md_before = blocks[alt_block_index].md[0];
+
+   		#endif
    	
 
 	   	blocks[alt_block_index].insert(warpID, tag);
 
 	   	toReturn = true;
 
+	   	#if DEBUG_ASSERTS
 	   	int new_fill = blocks[alt_block_index].get_fill();
    		if (new_fill != fill_alt+1){
    		printf("Broken Fill: Block %llu, old %d new %d\n", alt_block_index, fill_alt, new_fill);
+
+   		printf("Old md %llu -> new md %llu\n", md_before, blocks[alt_block_index].md[0]);
    		assert(blocks[alt_block_index].get_fill() == fill_alt+1);
    		}
+
+   		#endif
 
 	   }
 
@@ -191,22 +267,104 @@ __device__ bool vqf::query(int warpID, uint64_t hash){
 
    	lock_block(warpID, block_index);
 
+
+
+   	#if DEBUG_ASSERTS
+ 		int old_fill = blocks[block_index].get_fill();
+
+ 		assert(blocks[block_index].assert_consistency());
+
+ 		uint64_t md_before = blocks[block_index].md[0];
+ 		#endif
+
+
+
    	bool found = blocks[block_index].query(warpID, tag);
+
+
+   	#if DEBUG_ASSERTS
+ 		int new_fill = blocks[block_index].get_fill();
+
+ 		assert(blocks[block_index].assert_consistency());
+
+ 		uint64_t md_after = blocks[block_index].md[0];
+
+
+ 		assert(md_before == md_after);
+
+ 		assert(old_fill == new_fill);
+
+ 		#endif
+
+
 
    	unlock_block(warpID, block_index);
 
-   	return true;
+   	return found;
 
 
    }
 
    lock_blocks(warpID, block_index, alt_block_index);
 
-   bool found = blocks[block_index].query(warpID, tag) || blocks[alt_block_index].query(warpID, tag);
+
+      #if DEBUG_ASSERTS
+
+ 		int old_fill_0 = blocks[block_index].get_fill();
+
+ 		assert(blocks[block_index].assert_consistency());
+
+ 		uint64_t md_before_0 = blocks[block_index].md[0];
+
+
+
+ 		#endif
+
+
+   	#if DEBUG_ASSERTS
+ 		int old_fill = blocks[alt_block_index].get_fill();
+
+ 		assert(blocks[alt_block_index].assert_consistency());
+
+ 		uint64_t md_before = blocks[alt_block_index].md[0];
+
+ 		#endif
+
+   	bool found = blocks[block_index].query(warpID, tag) || blocks[alt_block_index].query(warpID, tag);
+
+
+   	#if DEBUG_ASSERTS
+ 		int new_fill_0 = blocks[block_index].get_fill();
+
+ 		assert(blocks[block_index].assert_consistency());
+
+ 		uint64_t md_after_0 = blocks[block_index].md[0];
+
+
+ 		assert(md_before_0 == md_after_0);
+
+ 		assert(old_fill_0 == new_fill_0);
+
+ 		#endif
+
+
+   	#if DEBUG_ASSERTS
+ 		int new_fill = blocks[alt_block_index].get_fill();
+
+ 		assert(blocks[alt_block_index].assert_consistency());
+
+ 		uint64_t md_after = blocks[alt_block_index].md[0];
+
+
+ 		assert(md_before == md_after);
+
+ 		assert(old_fill == new_fill);
+
+ 		#endif
 
    unlock_blocks(warpID, block_index, alt_block_index);
 
-   return true;
+   return found;
 
 }
 
@@ -223,7 +381,44 @@ __device__ bool vqf::remove(int warpID, uint64_t hash){
 
    lock_block(warpID, block_index);
 
+
+  		#if DEBUG_ASSERTS
+		int old_fill = blocks[block_index].get_fill();
+
+		assert(blocks[block_index].assert_consistency());
+
+		uint64_t md_before = blocks[block_index].md[0];
+
+
+		#endif
+
    bool found = blocks[block_index].remove(warpID, tag);
+
+
+      #if DEBUG_ASSERTS
+ 		int new_fill = blocks[block_index].get_fill();
+
+ 		assert(blocks[block_index].assert_consistency());
+
+ 		uint64_t md_after = blocks[block_index].md[0];
+
+ 		if (!found){
+
+ 			assert(md_before == md_after);
+
+ 			
+
+ 		} else {
+
+ 			assert(new_fill >= 0);
+
+ 			assert(old_fill-1 == new_fill);
+ 		}
+ 		
+
+ 		
+
+ 		#endif
 
    unlock_block(warpID, block_index);
 
@@ -235,7 +430,44 @@ __device__ bool vqf::remove(int warpID, uint64_t hash){
 
    lock_block(warpID, alt_block_index);
 
+     		#if DEBUG_ASSERTS
+		old_fill = blocks[alt_block_index].get_fill();
+
+		assert(blocks[alt_block_index].assert_consistency());
+
+		md_before = blocks[alt_block_index].md[0];
+
+
+		#endif
+
+
    found = blocks[alt_block_index].remove(warpID, tag);
+
+
+
+      #if DEBUG_ASSERTS
+ 		new_fill = blocks[alt_block_index].get_fill();
+
+ 		assert(blocks[alt_block_index].assert_consistency());
+
+ 		md_after = blocks[alt_block_index].md[0];
+
+
+ 		if (!found){
+
+ 			assert(md_before == md_after);
+
+ 			
+
+ 		} else {
+
+ 			assert(new_fill >= 0);
+
+ 			assert(old_fill-1 == new_fill);
+ 		}
+ 		
+
+ 		#endif
 
    unlock_block(warpID, alt_block_index);
 
@@ -369,16 +601,22 @@ __global__ void vqf_block_setup(vqf * vqf){
 
 	vqf->blocks[tid].setup();
 
-
-	if (tid ==0) vqf->blocks[tid].printBlock();
-
 }
 
 __host__ vqf * build_vqf(uint64_t nitems){
 
 
+	#if DEBUG_ASSERTS
+
+	printf("Debug correctness checks on. These will affect performance.\n");
+
+	#endif
+
 	//this seems weird but whatever
 	uint64_t num_blocks = (nitems -1)/SLOTS_PER_BLOCK + 1;
+
+
+	printf("Bytes used: %llu for %llu blocks.\n", num_blocks*sizeof(vqf_block),  num_blocks);
 
 
 	vqf * host_vqf;
