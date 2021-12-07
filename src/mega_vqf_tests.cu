@@ -29,14 +29,14 @@
 #include <bitset>
 
 
-#include "include/team_vqf.cuh"
+#include "include/mega_vqf.cuh"
 
 #include <openssl/rand.h>
 
 
 #define BLOCK_SIZE 512
 
-__global__ void test_insert_kernel(vqf* my_vqf, uint64_t * vals, bool * inserts, uint64_t nvals, uint64_t * misses){
+__global__ void test_insert_kernel(mega_vqf* my_mega_vqf, uint64_t * vals, bool * inserts, uint64_t nvals, uint64_t * misses){
 
 	uint64_t tid = threadIdx.x + blockDim.x*blockIdx.x;
 
@@ -49,7 +49,7 @@ __global__ void test_insert_kernel(vqf* my_vqf, uint64_t * vals, bool * inserts,
 
 	//vals[teamID] = teamID;
 
-	if (!my_vqf->insert(warpID, vals[teamID])){
+	if (!my_mega_vqf->insert(warpID, vals[teamID])){
 
 
 
@@ -64,8 +64,8 @@ __global__ void test_insert_kernel(vqf* my_vqf, uint64_t * vals, bool * inserts,
 	} //else {
 
 
-	// 	// if (!my_vqf->query(warpID, vals[teamID])){
-	// 	// 	assert(my_vqf->query(warpID, vals[teamID]));
+	// 	// if (!my_mega_vqf->query(warpID, vals[teamID])){
+	// 	// 	assert(my_mega_vqf->query(warpID, vals[teamID]));
 	// 	// }
 		
 	// }
@@ -79,14 +79,14 @@ __global__ void test_insert_kernel(vqf* my_vqf, uint64_t * vals, bool * inserts,
 
 	// 	assert(vals[i] != 0);
 
-	// 	my_vqf->insert(vals[i]);
+	// 	my_mega_vqf->insert(vals[i]);
 
 	// }
 	
 }
 
 
-__global__ void test_query_kernel(vqf* my_vqf, uint64_t * vals, bool * inserts, uint64_t nvals, uint64_t * misses){
+__global__ void test_query_kernel(mega_vqf* my_mega_vqf, uint64_t * vals, bool * inserts, uint64_t nvals, uint64_t * misses){
 
 	uint64_t tid = threadIdx.x + blockDim.x*blockIdx.x;
 
@@ -104,9 +104,9 @@ __global__ void test_query_kernel(vqf* my_vqf, uint64_t * vals, bool * inserts, 
 
 
 
-	if(!my_vqf->query(warpID, vals[teamID])){
+	if(!my_mega_vqf->query(warpID, vals[teamID])){
 
-		my_vqf->query(warpID, vals[teamID]);
+		my_mega_vqf->query(warpID, vals[teamID]);
 
 		if (warpID == 0)
 		atomicAdd( (unsigned long long int *) misses, 1);
@@ -122,14 +122,14 @@ __global__ void test_query_kernel(vqf* my_vqf, uint64_t * vals, bool * inserts, 
 
 	// 	assert(vals[i] != 0);
 
-	// 	my_vqf->insert(vals[i]);
+	// 	my_mega_vqf->insert(vals[i]);
 
 	// }
 	
 }
 
 
-__global__ void test_remove_kernel(vqf* my_vqf, uint64_t * vals, bool * inserts, uint64_t nvals, uint64_t * misses){
+__global__ void test_remove_kernel(mega_vqf* my_mega_vqf, uint64_t * vals, bool * inserts, uint64_t nvals, uint64_t * misses){
 
 	uint64_t tid = threadIdx.x + blockDim.x*blockIdx.x;
 
@@ -145,7 +145,7 @@ __global__ void test_remove_kernel(vqf* my_vqf, uint64_t * vals, bool * inserts,
 
 
 
-	if(!my_vqf->remove(warpID, vals[teamID])){
+	if(!my_mega_vqf->remove(warpID, vals[teamID])){
 		if (warpID == 0)
 		atomicAdd( (unsigned long long int *) misses, 1);
 	}
@@ -162,7 +162,7 @@ __global__ void test_remove_kernel(vqf* my_vqf, uint64_t * vals, bool * inserts,
 
 	// 	assert(vals[i] != 0);
 
-	// 	my_vqf->insert(vals[i]);
+	// 	my_mega_vqf->insert(vals[i]);
 
 	// }
 	
@@ -180,12 +180,12 @@ __global__ void wipe_vals(uint64_t * vals, uint64_t nvals){
 
 
 
-__host__ void insert_timing(vqf* my_vqf, uint64_t * vals, bool * inserts, uint64_t nvals, uint64_t * misses){
+__host__ void insert_timing(mega_vqf* my_mega_vqf, uint64_t * vals, bool * inserts, uint64_t nvals, uint64_t * misses){
 
 	auto start = std::chrono::high_resolution_clock::now();
 
 
-	test_insert_kernel<<<(32*nvals -1) / BLOCK_SIZE + 1, BLOCK_SIZE>>>(my_vqf, vals, inserts, nvals, misses);
+	test_insert_kernel<<<(32*nvals -1) / BLOCK_SIZE + 1, BLOCK_SIZE>>>(my_mega_vqf, vals, inserts, nvals, misses);
 
 
 	cudaDeviceSynchronize();
@@ -210,12 +210,12 @@ __host__ void insert_timing(vqf* my_vqf, uint64_t * vals, bool * inserts, uint64
   	cudaDeviceSynchronize();
 }
 
-__host__ void query_timing(vqf* my_vqf, uint64_t * vals, bool * inserts, uint64_t nvals, uint64_t * misses){
+__host__ void query_timing(mega_vqf* my_mega_vqf, uint64_t * vals, bool * inserts, uint64_t nvals, uint64_t * misses){
 
 	auto start = std::chrono::high_resolution_clock::now();
 
 
-	test_query_kernel<<<(32*nvals -1) / BLOCK_SIZE + 1, BLOCK_SIZE>>>(my_vqf, vals, inserts, nvals, misses);
+	test_query_kernel<<<(32*nvals -1) / BLOCK_SIZE + 1, BLOCK_SIZE>>>(my_mega_vqf, vals, inserts, nvals, misses);
 
 
 	cudaDeviceSynchronize();
@@ -241,12 +241,12 @@ __host__ void query_timing(vqf* my_vqf, uint64_t * vals, bool * inserts, uint64_
 }
 
 
-__host__ void remove_timing(vqf* my_vqf, uint64_t * vals, bool * inserts, uint64_t nvals, uint64_t * misses){
+__host__ void remove_timing(mega_vqf* my_mega_vqf, uint64_t * vals, bool * inserts, uint64_t nvals, uint64_t * misses){
 
 	auto start = std::chrono::high_resolution_clock::now();
 
 
-	test_remove_kernel<<<(32*nvals -1) / BLOCK_SIZE + 1, BLOCK_SIZE>>>(my_vqf, vals, inserts, nvals, misses);
+	test_remove_kernel<<<(32*nvals -1) / BLOCK_SIZE + 1, BLOCK_SIZE>>>(my_mega_vqf, vals, inserts, nvals, misses);
 
 
 	cudaDeviceSynchronize();
@@ -323,7 +323,7 @@ int main(int argc, char** argv) {
 	misses[0] = 0;
 
 
-	vqf * my_vqf =  build_vqf(1 << nbits);
+	mega_vqf * my_vqf =  build_mega_vqf(1 << nbits);
 
 
 	printf("Setup done\n");

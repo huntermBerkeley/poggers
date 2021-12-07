@@ -1,4 +1,4 @@
-TARGETS=sort_vqf_tests team_vqf_tests vqf_correctness_check
+TARGETS=power_of_one_test team_test
 
 ifdef D
 	DEBUG=-g -G
@@ -79,6 +79,23 @@ locking_vqf_test:						$(OBJDIR)/locking_vqf_test.o \
 								$(OBJDIR)/vqf_block.o
 
 
+small_vqf_tests:						$(OBJDIR)/small_vqf_tests.o \
+								$(OBJDIR)/team_vqf.o \
+								$(OBJDIR)/vqf_team_block.o \
+								$(OBJDIR)/warp_utils.o
+
+mega_vqf_tests:						$(OBJDIR)/mega_vqf_tests.o \
+								$(OBJDIR)/mega_vqf.o \
+								$(OBJDIR)/megablock.o \
+								$(OBJDIR)/warp_utils.o
+
+power_of_one_test:					$(OBJDIR)/power_of_one_test.o \
+								$(OBJDIR)/single_vqf.o \
+								$(OBJDIR)/vqf_team_block.o \
+								$(OBJDIR)/warp_utils.o \
+								$(OBJDIR)/hashutil.o
+
+
 shared_test:					$(OBJDIR)/shared_test.o
 
 # dependencies between .o files and .cc (or .c) files
@@ -91,6 +108,11 @@ $(OBJDIR)/vqf.o: $(LOC_SRC)/vqf.cu $(LOC_INCLUDE)/vqf.cuh $(LOC_SRC)/vqf_block.c
 $(OBJDIR)/vqf_team_block.o: $(LOC_SRC)/vqf_team_block.cu $(LOC_INCLUDE)/vqf_team_block.cuh
 $(OBJDIR)/warp_utils.o: $(LOC_SRC)/warp_utils.cu $(LOC_INCLUDE)/warp_utils.cuh
 $(OBJDIR)/team_vqf.o: $(LOC_SRC)/team_vqf.cu $(LOC_INCLUDE)/team_vqf.cuh $(LOC_SRC)/vqf_team_block.cu $(LOC_INCLUDE)/vqf_team_block.cuh
+$(OBJDIR)/megablock.o: $(LOC_SRC)/megablock.cu $(LOC_INCLUDE)/megablock.cuh
+$(OBJDIR)/mega_vqf.o: $(LOC_SRC)/mega_vqf.cu $(LOC_INCLUDE)/mega_vqf.cuh $(LOC_SRC)/megablock.cu $(LOC_INCLUDE)/megablock.cuh
+$(OBJDIR)/single_vqf.o: $(LOC_SRC)/single_vqf.cu $(LOC_INCLUDE)/single_vqf.cuh $(LOC_SRC)/vqf_team_block.cu $(LOC_INCLUDE)/vqf_team_block.cuh
+$(OBJDIR)/hashutil.o: $(LOC_SRC)/hashutil.cu $(LOC_INCLUDE)/hashutil.cuh
+
 
 #
 # generic build rules

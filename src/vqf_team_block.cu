@@ -67,7 +67,7 @@ __host__ __device__ static inline int popcnt(uint64_t val)
 //this is done on a per thread level
 __device__ void vqf_block::setup(){
 
-	uint64_t mask = (1ULL << VIRTUAL_BUCKETS)-1;
+	uint64_t mask = UNLOCK_MASK;
 
 	atomicOr((unsigned long long int *) md, mask);
 
@@ -350,7 +350,7 @@ __device__ void vqf_block::down_shift(int index){
 	//simple case - one vector for all md
 	uint64_t lock = get_upper_bit(md[0]);
 
-	uint64_t new_md = shift_lower_bits(md[0] & UNLOCK_MASK, index);
+	uint64_t new_md = shift_lower_bits(md[0], index);
 
 	atomicExch((unsigned long long int *)md, new_md | lock);
 
@@ -373,8 +373,9 @@ __device__ int vqf_block::get_fill(){
 
 	#if TAG_BITS == 16
 	
-	return SLOTS_PER_BLOCK - __clzll(md[0] & UNLOCK_MASK);
+	//return SLOTS_PER_BLOCK - __clzll(md[0] & UNLOCK_MASK);
 
+	return 64 - __popcll(md[0]);
 
 	#elif TAG_BITS == 8
 
@@ -511,12 +512,31 @@ __device__ bool vqf_block::query(int warpID, uint64_t item){
 	#endif
 
 
+	
+
+	#if TAG_BITS == 8
+
 	int ballot = 0;
+
 	for (int i=start+warpID; i < end; i+=32){
 
 		if (tags[i] == tag) ballot = 1;
 	}
 	__syncwarp();
+
+	#elif TAG_BITS == 16 
+
+	//is this shorter?
+	//yes, it compiles to the same code with static ends in godbolt
+
+
+	int	ballot = (warpID+start < end && (tags[start + warpID] == tag));
+
+	__syncwarp();
+
+
+	#endif
+
 
 	unsigned int ballot_result = __ballot_sync(0xfffffff, ballot);
 
@@ -575,6 +595,8 @@ __device__ bool vqf_block::remove(int warpID, uint64_t item){
 	int remove_index = __shfl_sync(0xfffffff, insert_index, thread_to_query); 
 
 	int num_slots_to_shift = get_fill() - remove_index;
+
+	//NUM_SLOTS_TO_SHIFT seems too high
 
 
 	//do the reverse move
@@ -651,6 +673,6 @@ __device__ void vqf_block::printMetadata(){
 
 __device__ bool vqf_block::assert_consistency(){
 
-
-	return(popcnt(md[0]) == VIRTUAL_BUCKETS + 1);
+	return true;
+	//return(popcnt(md[0]) == VIRTUAL_BUCKETS + 1);
 }

@@ -147,11 +147,14 @@ __device__ void insert_remove_test(vqf_block * block, uint64_t tid){
 __device__ void insert_duplicates_test(int warpID, vqf_block * block){
 
 
+	block[0].lock(warpID);
+
 
 	for (int max_fill = 0; max_fill < 28; max_fill++){
 
 
 		for (int i = 0; i < max_fill; i++){
+
 			block[0].insert(warpID, i*50);
 
 			if (block[0].get_fill() != i+1){
@@ -166,19 +169,23 @@ __device__ void insert_duplicates_test(int warpID, vqf_block * block){
 		
 
 		for (int i = 0; i < max_fill; i++){
-			block[0].query(warpID, i*50);
+			assert(block[0].query(warpID, i*50));
 		}
 
 
 		for (int i = 0; i < max_fill; i++){
-			block[0].remove(warpID, i*50);
+			assert(block[0].remove(warpID, i*50));
 		}
 
+		//if (warpID == 0) printf("Fill: %llu\n", block[0].get_fill());
 		assert(block[0].get_fill() == 0);
 
 		if (warpID == 0) printf("Done with %d\n", max_fill);
 
 	}
+
+
+	block[0].unlock(warpID);
 
 
 

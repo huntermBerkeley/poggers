@@ -324,7 +324,7 @@ __device__ void block_8_memmove_insert(int warpID, uint16_t * tags, uint16_t tag
 
     uint16_t old;
 
-	bool participating = warpID >= index && warpID < 27;
+	bool participating = (warpID >= index && warpID < 27);
 
 	if (participating){
 
@@ -338,6 +338,10 @@ __device__ void block_8_memmove_insert(int warpID, uint16_t * tags, uint16_t tag
 
 	if (participating){
 		tags[warpID+1] = old;
+		
+	}
+
+	if (warpID == 0){
 		tags[index] = tag;
 	}
 

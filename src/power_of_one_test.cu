@@ -29,7 +29,7 @@
 #include <bitset>
 
 
-#include "include/team_vqf.cuh"
+#include "include/single_vqf.cuh"
 
 #include <openssl/rand.h>
 
@@ -86,6 +86,25 @@ __global__ void test_insert_kernel(vqf* my_vqf, uint64_t * vals, bool * inserts,
 }
 
 
+__global__ void bulk_insert_kernel(vqf* my_vqf, uint64_t * vals, bool * inserts, uint64_t nvals, uint64_t * misses){
+
+
+	uint64_t tid = threadIdx.x + blockDim.x*blockIdx.x;
+
+	uint64_t teamID = tid/32;
+
+	int warpID = tid % 32;
+
+	if (teamID >= my_vqf->num_blocks) return;
+
+	my_vqf->buffer_insert(warpID, teamID);
+
+	if (warpID == 0)
+	atomicAdd( (unsigned long long int *) misses, my_vqf->buffer_sizes[teamID]);
+
+}
+
+
 __global__ void test_query_kernel(vqf* my_vqf, uint64_t * vals, bool * inserts, uint64_t nvals, uint64_t * misses){
 
 	uint64_t tid = threadIdx.x + blockDim.x*blockIdx.x;
@@ -99,8 +118,6 @@ __global__ void test_query_kernel(vqf* my_vqf, uint64_t * vals, bool * inserts, 
 
 
 	if (!inserts[teamID]){
-
-
 
 
 
@@ -210,6 +227,58 @@ __host__ void insert_timing(vqf* my_vqf, uint64_t * vals, bool * inserts, uint64
   	cudaDeviceSynchronize();
 }
 
+
+__host__ void bulk_insert_timing(vqf* my_vqf, uint64_t * vals, bool * inserts, uint64_t nvals, uint64_t * misses){
+
+	auto start = std::chrono::high_resolution_clock::now();
+
+	my_vqf->attach_buffers(vals, nvals);
+
+	uint64_t num_buffers = my_vqf->get_num_buffers();
+
+	cudaDeviceSynchronize();
+
+	auto mid = std::chrono::high_resolution_clock::now();
+
+
+
+	bulk_insert_kernel<<<(32*num_buffers -1) / BLOCK_SIZE + 1, BLOCK_SIZE>>>(my_vqf, vals, inserts, nvals, misses);
+
+
+	cudaDeviceSynchronize();
+	//and insert
+
+	auto end = std::chrono::high_resolution_clock::now();
+
+
+  	std::chrono::duration<double> diff = end-start;
+
+
+  	std::chrono::duration<double> sort_diff = mid - start;
+
+  	std::chrono::duration<double> insert_diff = end - mid;
+
+
+
+
+  	std::cout << "Bulk Inserted " << nvals << " in " << diff.count() << " seconds\n";
+
+  	std::cout << "Sorted " << nvals << " in " << sort_diff.count() << " seconds\n";
+
+  	std::cout << "Items Inserted " << nvals << " in " << insert_diff.count() << " seconds\n";
+
+  	printf("Inserts per second: %f\n", nvals/diff.count());
+
+
+  	printf("Misses %llu\n", misses[0]);
+
+  	cudaDeviceSynchronize();
+
+  	misses[0] = 0;
+
+  	cudaDeviceSynchronize();
+}
+
 __host__ void query_timing(vqf* my_vqf, uint64_t * vals, bool * inserts, uint64_t nvals, uint64_t * misses){
 
 	auto start = std::chrono::high_resolution_clock::now();
@@ -277,7 +346,7 @@ int main(int argc, char** argv) {
 	uint64_t nbits = atoi(argv[1]);
 
 
-	uint64_t nitems = (1 << nbits) * .8;
+	uint64_t nitems = (1ULL << nbits) * .8;
 
 	uint64_t * vals;
 	uint64_t * dev_vals;
@@ -330,12 +399,28 @@ int main(int argc, char** argv) {
 
 	//wipe_vals<<<nitems/32+1, 32>>>(dev_vals, nitems);
 
+
 	cudaDeviceSynchronize();
 
 	
-	insert_timing(my_vqf, dev_vals, inserts, nitems,  misses);
+
+
+	cudaDeviceSynchronize();
+
+	
+	bulk_insert_timing(my_vqf, dev_vals, inserts, nitems,  misses);
+
+	cudaMemcpy(dev_vals, vals, nitems * sizeof(vals[0]), cudaMemcpyHostToDevice);
+
+	cudaDeviceSynchronize();
 
 	query_timing(my_vqf, dev_vals, inserts, nitems,  misses);
+
+
+	cudaMemcpy(dev_vals, vals, nitems * sizeof(vals[0]), cudaMemcpyHostToDevice);
+
+	cudaDeviceSynchronize();
+
 
 	remove_timing(my_vqf, dev_vals, inserts, nitems,  misses);
 

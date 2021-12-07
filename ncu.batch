@@ -3,7 +3,7 @@
 #SBATCH -N 1
 #SBATCH -C gpu
 #SBATCH -q regular
-#SBATCH -t 30:00
+#SBATCH -t 1:00:00
 #SBATCH -c 10
 #SBATCH -G 1
 #SBATCH -o ncu_profile.out

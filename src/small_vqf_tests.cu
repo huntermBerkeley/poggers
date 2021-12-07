@@ -277,7 +277,7 @@ int main(int argc, char** argv) {
 	uint64_t nbits = atoi(argv[1]);
 
 
-	uint64_t nitems = (1 << nbits) * .8;
+	uint64_t nitems = 1000;
 
 	uint64_t * vals;
 	uint64_t * dev_vals;
@@ -323,7 +323,7 @@ int main(int argc, char** argv) {
 	misses[0] = 0;
 
 
-	vqf * my_vqf =  build_vqf(1 << nbits);
+	vqf * my_vqf =  build_vqf(28);
 
 
 	printf("Setup done\n");
