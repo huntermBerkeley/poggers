@@ -25,7 +25,7 @@
 #define DEBUG_ASSERTS 1
 #define MAX_FILL 28
 #define SINGLE_REGION 0
-#define FILL_CUTOFF 2
+#define FILL_CUTOFF 24
 
 __device__ void vqf::lock_block(int warpID, uint64_t lock){
 
@@ -98,7 +98,7 @@ __device__ bool vqf::insert(int warpID, uint64_t key){
 
 	uint64_t hash = hash_key(key);
 
-   uint64_t block_index = (hash >> TAG_BITS) % num_blocks;
+   uint64_t block_index = get_bucket_from_hash(hash);
 
 
 
@@ -199,16 +199,16 @@ __device__ bool vqf::buffer_insert(int warpID, uint64_t buffer){
 		// (x mod yz) | z == x mod y?
 		//python says no ur a dumbass this is the bug
 		
-		if (!((buffers[buffer][count] >> TAG_BITS) % num_blocks  == buffer)){
+		if (!(get_bucket_from_hash(buffers[buffer][i])  == buffer)){
 
 			if (warpID == 0){
 
-				printf("i %d count %d item %llu buffer %llu new_buf %llu\n", i, count, buffers[buffer][count], buffer, (buffers[buffer][count] >> TAG_BITS) % num_blocks);
+				printf("i %d count %d item %llu buffer %llu new_buf %llu\n", i, count, buffers[buffer][i], buffer, get_bucket_from_hash(buffers[buffer][i]));
 			}
 
 			__syncwarp();
 
-			assert((buffers[buffer][count] >> TAG_BITS) % num_blocks  == buffer);
+			assert((buffers[buffer][i] >> TAG_BITS) % num_blocks  == buffer);
 
 		}
 		
@@ -249,7 +249,7 @@ __device__ bool vqf::query(int warpID, uint64_t key){
 	uint64_t hash = hash_key(key);
 
 	//uint64_t block_index = ((hash >> TAG_BITS) % (VIRTUAL_BUCKETS*num_blocks))/VIRTUAL_BUCKETS;
-	uint64_t block_index = (hash >> TAG_BITS) % num_blocks;
+	uint64_t block_index = get_bucket_from_hash(hash);
 
    //this will generate a mask and get the tag bits
    uint64_t tag = hash & ((1ULL << TAG_BITS) -1);
@@ -284,7 +284,7 @@ __device__ bool vqf::remove(int warpID, uint64_t key){
 	uint64_t hash = hash_key(key);
 
 
-	uint64_t block_index = (hash >> TAG_BITS) % num_blocks;
+	uint64_t block_index = get_bucket_from_hash(hash);
 
    //this will generate a mask and get the tag bits
    uint64_t tag = hash & ((1ULL << TAG_BITS) -1);
@@ -518,7 +518,7 @@ __global__ void set_buffers_binary(vqf * my_vqf, uint64_t num_keys, uint64_t * k
 
 		//this sounds right? - they divide to go back so I think this is fine
 		//this is fine but need to apply a hash
-		uint64_t boundary = 	 (VIRTUAL_BUCKETS*idx); //<< qf->metadata->bits_per_slot;
+		uint64_t boundary = idx; //<< qf->metadata->bits_per_slot;
 
 
 		//This is the code I'm stealing that assumption from
@@ -540,7 +540,14 @@ __global__ void set_buffers_binary(vqf * my_vqf, uint64_t num_keys, uint64_t * k
 
 			index = lower + (upper - lower)/2;
 
-			if ((keys[index] >> TAG_BITS) < boundary){
+			//((keys[index] >> TAG_BITS)
+			uint64_t bucket = my_vqf->get_bucket_from_hash(keys[index]);
+
+
+			if (index != 0)
+			uint64_t old_bucket = my_vqf->get_bucket_from_hash(keys[index-1]);
+
+			if (bucket < boundary){
 
 				//false - the list before this point can be removed
 				lower = index+1;
@@ -554,7 +561,10 @@ __global__ void set_buffers_binary(vqf * my_vqf, uint64_t num_keys, uint64_t * k
 				//will this fix? otherwise need to patch via round up
 				upper = index;
 
-			} else if ((keys[index-1] >> TAG_BITS) < boundary) {
+				//(get_bucket_from_hash(keys[index-1])
+				//(keys[index-1] >> TAG_BITS)
+
+			} else if (my_vqf->get_bucket_from_hash(keys[index-1]) < boundary) {
 
 				//set index! this is the first instance where I am valid and the next isnt
 				//buffers[idx] = keys+index;
@@ -573,6 +583,8 @@ __global__ void set_buffers_binary(vqf * my_vqf, uint64_t num_keys, uint64_t * k
 		//we either exited or have an edge condition:
 		//upper == lower iff 0 or max key
 		index = lower + (upper - lower)/2;
+
+		assert(my_vqf->get_bucket_from_hash(keys[index]) == idx);
 
 
 		my_vqf->buffers[idx] = keys + index;

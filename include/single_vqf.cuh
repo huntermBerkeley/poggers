@@ -53,6 +53,7 @@ typedef struct __attribute__ ((__packed__)) vqf {
 
 	__host__ uint64_t get_num_buffers();
 
+	__device__ uint64_t get_bucket_from_hash(uint64_t hash);
 
 } vqf;
 
