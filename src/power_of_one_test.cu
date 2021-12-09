@@ -30,11 +30,11 @@
 
 
 #include "include/single_vqf.cuh"
+#include "include/vqf_team_block.cuh"
+#include "include/metadata.cuh"
 
 #include <openssl/rand.h>
 
-
-#define BLOCK_SIZE 512
 
 __global__ void test_insert_kernel(vqf* my_vqf, uint64_t * vals, bool * inserts, uint64_t nvals, uint64_t * misses){
 
@@ -49,7 +49,7 @@ __global__ void test_insert_kernel(vqf* my_vqf, uint64_t * vals, bool * inserts,
 
 	//vals[teamID] = teamID;
 
-	if (!my_vqf->insert(warpID, vals[teamID])){
+	if (!my_vqf->insert(warpID, vals[teamID], false)){
 
 
 
@@ -91,19 +91,154 @@ __global__ void bulk_insert_kernel(vqf* my_vqf, uint64_t * vals, bool * inserts,
 
 	uint64_t tid = threadIdx.x + blockDim.x*blockIdx.x;
 
-	uint64_t teamID = tid/32;
+	uint64_t teamID = (tid/32)*2;
+
 
 	int warpID = tid % 32;
 
-	if (teamID >= my_vqf->num_blocks) return;
+	if (teamID < my_vqf->num_blocks){
+
 
 	my_vqf->buffer_insert(warpID, teamID);
 
 	if (warpID == 0)
 	atomicAdd( (unsigned long long int *) misses, my_vqf->buffer_sizes[teamID]);
 
+
+
+	teamID +=1;
+
+	if (teamID < my_vqf->num_blocks){
+
+
+	my_vqf->buffer_insert(warpID, teamID);
+
+	if (warpID == 0)
+	atomicAdd( (unsigned long long int *) misses, my_vqf->buffer_sizes[teamID]);
+
+
+	//dump remainder
+
+	}
+
+
+
+	}
+
+
 }
 
+
+__global__ void shared_bulk_insert_kernel(vqf* my_vqf, uint64_t * vals, bool * inserts, uint64_t nvals, uint64_t * misses){
+
+
+	//__shared__ vqf_block extern_blocks[WARPS_PER_BLOCK];
+
+	uint64_t tid = threadIdx.x + blockDim.x*blockIdx.x;
+
+	uint64_t teamID = (tid/32)*2;
+
+	uint64_t trueID = (tid/32);
+
+
+	int warpID = tid % 32;
+
+	if (teamID < my_vqf->num_blocks){
+
+
+	//my_vqf->buffer_insert(warpID, teamID);
+
+	my_vqf->shared_buffer_insert(warpID, trueID % WARPS_PER_BLOCK, teamID);
+
+	if (warpID == 0)
+	atomicAdd( (unsigned long long int *) misses, my_vqf->buffer_sizes[teamID]);
+
+
+
+	teamID +=1;
+
+	if (teamID < my_vqf->num_blocks){
+
+	my_vqf->shared_buffer_insert(warpID, trueID % WARPS_PER_BLOCK, teamID);
+
+	//my_vqf->buffer_insert(warpID, teamID);
+
+	if (warpID == 0)
+	atomicAdd( (unsigned long long int *) misses, my_vqf->buffer_sizes[teamID]);
+
+
+	//dump remainder
+
+	}
+
+
+
+	}
+
+
+}
+
+
+
+//BUG: This hashes the inputs twice, gets really fucky answers because of that - pass a preshashed flag to the vqf
+
+__global__ void bulk_finish_kernel(vqf * my_vqf, uint64_t * vals, bool * inserts, uint64_t nvals, uint64_t * misses){
+
+	uint64_t tid = threadIdx.x + blockDim.x*blockIdx.x;
+
+	uint64_t teamID = (tid/32)*2;
+
+
+	int warpID = tid % 32;
+
+	if (teamID < my_vqf->num_blocks){
+
+
+	int size = my_vqf->buffer_sizes[teamID];
+	for (int i =0; i < size; i++){
+
+
+
+		if (!my_vqf->insert(warpID, my_vqf->buffers[teamID][i], true)){
+
+		if (warpID == 0)
+		atomicAdd( (unsigned long long int *) misses, my_vqf->buffer_sizes[teamID]);
+
+
+		}
+
+	}
+
+	
+
+
+	teamID +=1;
+
+	if (teamID < my_vqf->num_blocks){
+
+
+	size = my_vqf->buffer_sizes[teamID];
+	for (int i =0; i < size; i++){
+
+		if (!my_vqf->insert(warpID, my_vqf->buffers[teamID][i], true)){
+
+		if (warpID == 0)
+		atomicAdd( (unsigned long long int *) misses, my_vqf->buffer_sizes[teamID]);
+
+
+		}
+
+	}
+
+	//dump remainder
+
+	}
+
+
+
+	}
+
+}
 
 __global__ void test_query_kernel(vqf* my_vqf, uint64_t * vals, bool * inserts, uint64_t nvals, uint64_t * misses){
 
@@ -202,7 +337,7 @@ __host__ void insert_timing(vqf* my_vqf, uint64_t * vals, bool * inserts, uint64
 	auto start = std::chrono::high_resolution_clock::now();
 
 
-	test_insert_kernel<<<(32*nvals -1) / BLOCK_SIZE + 1, BLOCK_SIZE>>>(my_vqf, vals, inserts, nvals, misses);
+	test_insert_kernel<<<(32*nvals -1) / (32 * WARPS_PER_BLOCK) + 1, (32 * WARPS_PER_BLOCK)>>>(my_vqf, vals, inserts, nvals, misses);
 
 
 	cudaDeviceSynchronize();
@@ -242,7 +377,10 @@ __host__ void bulk_insert_timing(vqf* my_vqf, uint64_t * vals, bool * inserts, u
 
 
 
-	bulk_insert_kernel<<<(32*num_buffers -1) / BLOCK_SIZE + 1, BLOCK_SIZE>>>(my_vqf, vals, inserts, nvals, misses);
+	shared_bulk_insert_kernel<<<(32*num_buffers -1) / (32 * WARPS_PER_BLOCK) + 1, (32 * WARPS_PER_BLOCK)>>>(my_vqf, vals, inserts, nvals, misses);
+
+
+	//bulk_finish_kernel<<<(32*num_buffers -1)/ BLOCK_SIZE + 1, BLOCK_SIZE>>>(my_vqf, vals, inserts, nvals, misses);
 
 
 	cudaDeviceSynchronize();
@@ -284,7 +422,7 @@ __host__ void query_timing(vqf* my_vqf, uint64_t * vals, bool * inserts, uint64_
 	auto start = std::chrono::high_resolution_clock::now();
 
 
-	test_query_kernel<<<(32*nvals -1) / BLOCK_SIZE + 1, BLOCK_SIZE>>>(my_vqf, vals, inserts, nvals, misses);
+	test_query_kernel<<<(32*nvals -1) / (32 * WARPS_PER_BLOCK) + 1, (32 * WARPS_PER_BLOCK)>>>(my_vqf, vals, inserts, nvals, misses);
 
 
 	cudaDeviceSynchronize();
@@ -315,7 +453,7 @@ __host__ void remove_timing(vqf* my_vqf, uint64_t * vals, bool * inserts, uint64
 	auto start = std::chrono::high_resolution_clock::now();
 
 
-	test_remove_kernel<<<(32*nvals -1) / BLOCK_SIZE + 1, BLOCK_SIZE>>>(my_vqf, vals, inserts, nvals, misses);
+	test_remove_kernel<<<(32*nvals -1) / (32 * WARPS_PER_BLOCK) + 1, (32 * WARPS_PER_BLOCK)>>>(my_vqf, vals, inserts, nvals, misses);
 
 
 	cudaDeviceSynchronize();

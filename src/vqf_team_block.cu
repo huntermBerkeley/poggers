@@ -285,7 +285,8 @@ __device__ void vqf_block::md_0_and_shift_right(int index){
 
 	uint64_t new_md = shift_upper_bits(md[0], index);
 
-	atomicExch((unsigned long long int *)md, new_md | lock);
+	md[0] = new_md | lock;
+	//atomicExch((unsigned long long int *)md, new_md | lock);
 
 
 	#endif
@@ -352,8 +353,8 @@ __device__ void vqf_block::down_shift(int index){
 
 	uint64_t new_md = shift_lower_bits(md[0], index);
 
-	atomicExch((unsigned long long int *)md, new_md | lock);
-
+	//atomicExch((unsigned long long int *)md, new_md | lock);
+	md[0] = new_md | lock;
 
 	#endif
 
@@ -675,4 +676,21 @@ __device__ bool vqf_block::assert_consistency(){
 
 	return true;
 	//return(popcnt(md[0]) == VIRTUAL_BUCKETS + 1);
+}
+
+__device__ bool compare_blocks(vqf_block one, vqf_block two){
+
+
+	bool correct = true;
+
+	correct = correct && (one.md[0] == two.md[0]);
+
+
+	for (int i=0; i < SLOTS_PER_BLOCK; i++){
+
+		correct = correct && (one.tags[i] == two.tags[i]);
+	}
+
+	return correct;
+
 }

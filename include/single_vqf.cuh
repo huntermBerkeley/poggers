@@ -34,7 +34,7 @@ typedef struct __attribute__ ((__packed__)) vqf {
 	__device__ void unlock_blocks(int warpId, uint64_t lock1, uint64_t lock2);
 
 
-	__device__ bool insert(int warpID, uint64_t item);
+	__device__ bool insert(int warpID, uint64_t item, bool hashed);
 
 	__device__ bool query(int warpID, uint64_t item);
 
@@ -54,6 +54,10 @@ typedef struct __attribute__ ((__packed__)) vqf {
 	__host__ uint64_t get_num_buffers();
 
 	__device__ uint64_t get_bucket_from_hash(uint64_t hash);
+
+	__device__ bool shared_buffer_insert(int warpID, int shared_blockID, uint64_t buffer);
+
+	__device__ bool shared_buffer_insert_check(int warpID, int shared_blockID, uint64_t buffer);
 
 } vqf;
 

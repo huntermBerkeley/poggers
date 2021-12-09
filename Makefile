@@ -110,7 +110,7 @@ $(OBJDIR)/warp_utils.o: $(LOC_SRC)/warp_utils.cu $(LOC_INCLUDE)/warp_utils.cuh
 $(OBJDIR)/team_vqf.o: $(LOC_SRC)/team_vqf.cu $(LOC_INCLUDE)/team_vqf.cuh $(LOC_SRC)/vqf_team_block.cu $(LOC_INCLUDE)/vqf_team_block.cuh
 $(OBJDIR)/megablock.o: $(LOC_SRC)/megablock.cu $(LOC_INCLUDE)/megablock.cuh
 $(OBJDIR)/mega_vqf.o: $(LOC_SRC)/mega_vqf.cu $(LOC_INCLUDE)/mega_vqf.cuh $(LOC_SRC)/megablock.cu $(LOC_INCLUDE)/megablock.cuh
-$(OBJDIR)/single_vqf.o: $(LOC_SRC)/single_vqf.cu $(LOC_INCLUDE)/single_vqf.cuh $(LOC_SRC)/vqf_team_block.cu $(LOC_INCLUDE)/vqf_team_block.cuh
+$(OBJDIR)/single_vqf.o: $(LOC_SRC)/single_vqf.cu $(LOC_INCLUDE)/single_vqf.cuh $(LOC_SRC)/vqf_team_block.cu $(LOC_INCLUDE)/vqf_team_block.cuh $(LOC_INCLUDE)/metadata.cuh
 $(OBJDIR)/hashutil.o: $(LOC_SRC)/hashutil.cu $(LOC_INCLUDE)/hashutil.cuh
 
 

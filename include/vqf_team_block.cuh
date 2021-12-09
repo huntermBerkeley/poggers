@@ -21,7 +21,7 @@
 
 #elif TAG_BITS == 16
 
-#define SLOTS_PER_BLOCK 27
+#define SLOTS_PER_BLOCK 27  
 #define VIRTUAL_BUCKETS 36 
 
 #endif
@@ -31,6 +31,9 @@
 #define LOCK_MASK (1ULL << 63)
 
 #define UNLOCK_MASK ~(1ULL << 63)
+
+//POSSIBLE BUG:
+//the volatile status of md is what causes the slow performance
 
 typedef struct __attribute__ ((__packed__)) vqf_block {
 
@@ -45,7 +48,7 @@ typedef struct __attribute__ ((__packed__)) vqf_block {
 	#elif TAG_BITS == 16
 
 		
-		volatile uint64_t md[1];
+		uint64_t md[1];
 		uint16_t tags[28];
 
 	#endif
@@ -125,6 +128,8 @@ typedef struct __attribute__ ((__packed__)) vqf_block {
 
 
 //DEFINE FUNCS
+
+__device__ bool compare_blocks(vqf_block one, vqf_block two);
 
 
 

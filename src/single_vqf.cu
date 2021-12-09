@@ -20,12 +20,8 @@
 #include <thrust/execution_policy.h>
 #include <thrust/device_vector.h>
 #include "include/hashutil.cuh"
+#include "include/metadata.cuh"
 
-
-#define DEBUG_ASSERTS 1
-#define MAX_FILL 28
-#define SINGLE_REGION 0
-#define FILL_CUTOFF 24
 
 __device__ void vqf::lock_block(int warpID, uint64_t lock){
 
@@ -93,10 +89,21 @@ __device__ void vqf::unlock_blocks(int warpID, uint64_t lock1, uint64_t lock2){
 
 }
 
-__device__ bool vqf::insert(int warpID, uint64_t key){
+__device__ bool vqf::insert(int warpID, uint64_t key, bool hashed){
 
 
-	uint64_t hash = hash_key(key);
+	uint64_t hash;
+
+	if (hashed){
+
+		hash = key;
+
+	} else {
+
+		hash = hash_key(key);
+
+
+	}
 
    uint64_t block_index = get_bucket_from_hash(hash);
 
@@ -242,6 +249,248 @@ __device__ bool vqf::buffer_insert(int warpID, uint64_t buffer){
 
 
 }
+
+
+
+__device__ bool vqf::shared_buffer_insert(int warpID, int shared_blockID, uint64_t buffer){
+
+
+	__shared__ vqf_block extern_blocks[WARPS_PER_BLOCK];
+
+
+	#if DEBUG_ASSERTS
+
+	assert(buffer < num_blocks);
+
+	#endif
+
+
+	uint64_t block_index = buffer;
+
+	//lock_block(warpID, block_index);
+
+
+	if (warpID == 0)
+
+	extern_blocks[shared_blockID] = blocks[block_index];
+
+	extern_blocks[shared_blockID].lock(warpID);
+
+
+	int fill_main = extern_blocks[shared_blockID].get_fill();
+
+	#ifdef DEBUG_ASSERTS
+	assert(fill_main == 0);
+	#endif
+
+	int count = FILL_CUTOFF - fill_main;
+
+	int buf_size = buffer_sizes[buffer];
+
+	if (buf_size < count) count = buf_size;
+
+	for (int i =0; i < count; i++){
+
+		#if DEBUG_ASSERTS
+
+		int old_fill = extern_blocks[shared_blockID].get_fill();
+
+
+		//relevant equation
+
+		// (x mod yz) | z == x mod y?
+		//python says no ur a dumbass this is the bug
+		
+		if (!(get_bucket_from_hash(buffers[buffer][i])  == buffer)){
+
+			if (warpID == 0){
+
+				printf("i %d count %d item %llu buffer %llu new_buf %llu\n", i, count, buffers[buffer][i], buffer, get_bucket_from_hash(buffers[buffer][i]));
+			}
+
+			__syncwarp();
+
+			assert((buffers[buffer][i] >> TAG_BITS) % num_blocks  == buffer);
+
+		}
+		
+
+
+		#endif
+
+		uint64_t tag = buffers[buffer][i] & ((1ULL << TAG_BITS) -1);
+		extern_blocks[shared_blockID].insert(warpID, tag);
+
+		#if DEBUG_ASSERTS
+
+		assert(extern_blocks[shared_blockID].get_fill() == old_fill+1);
+
+		#endif
+
+	}
+
+	//write back
+
+	extern_blocks[shared_blockID].unlock(warpID);
+
+	if (warpID == 0)
+	blocks[block_index] = extern_blocks[shared_blockID];
+
+
+
+	__threadfence();
+	__syncwarp();
+
+	//blocks[block_index].unlock(warpID);
+	
+
+	//and decrement the count
+
+	if (warpID == 0){
+
+		buffers[buffer] += count;
+
+		buffer_sizes[buffer] -= count;
+
+
+	}
+
+
+}
+
+//Double check that the two inserts line up!
+//to activate, tab out the code that changes the sizes of the buffers in buffer_insert
+//otherwise results get wacky
+__device__ bool vqf::shared_buffer_insert_check(int warpID, int shared_blockID, uint64_t buffer){
+
+
+
+	__shared__ vqf_block extern_blocks[WARPS_PER_BLOCK];
+
+	#if DEBUG_ASSERTS
+
+	assert(buffer < num_blocks);
+
+	#endif
+
+
+	uint64_t block_index = buffer;
+
+	lock_block(warpID, block_index);
+
+
+	if (warpID == 0)
+
+	extern_blocks[shared_blockID] = blocks[block_index];
+
+
+	if (!compare_blocks(blocks[block_index],extern_blocks[shared_blockID])){
+
+		assert(compare_blocks(blocks[block_index],extern_blocks[shared_blockID]));
+
+	}
+
+
+	int fill_main = extern_blocks[shared_blockID].get_fill();
+
+	#ifdef DEBUG_ASSERTS
+	assert(fill_main == 0);
+	#endif
+
+	int count = FILL_CUTOFF - fill_main;
+
+	int buf_size = buffer_sizes[buffer];
+
+	if (buf_size < count) count = buf_size;
+
+	for (int i =0; i < count; i++){
+
+		#if DEBUG_ASSERTS
+
+		int old_fill = extern_blocks[shared_blockID].get_fill();
+
+
+		//relevant equation
+
+		// (x mod yz) | z == x mod y?
+		//python says no ur a dumbass this is the bug
+		
+		if (!(get_bucket_from_hash(buffers[buffer][i])  == buffer)){
+
+			if (warpID == 0){
+
+				printf("i %d count %d item %llu buffer %llu new_buf %llu\n", i, count, buffers[buffer][i], buffer, get_bucket_from_hash(buffers[buffer][i]));
+			}
+
+			__syncwarp();
+
+			assert((buffers[buffer][i] >> TAG_BITS) % num_blocks  == buffer);
+
+		}
+		
+
+
+		#endif
+
+		uint64_t tag = buffers[buffer][i] & ((1ULL << TAG_BITS) -1);
+
+		blocks[block_index].insert(warpID, tag);
+		extern_blocks[shared_blockID].insert(warpID, tag);
+
+		#if DEBUG_ASSERTS
+
+
+		if (!compare_blocks(blocks[block_index],extern_blocks[shared_blockID])){
+
+			assert(compare_blocks(blocks[block_index],extern_blocks[shared_blockID]));
+
+		}
+		
+
+		assert(extern_blocks[shared_blockID].get_fill() == old_fill+1);
+
+		assert(blocks[block_index].get_fill() == old_fill + 1);
+
+		#endif
+
+	}
+
+	//write back
+
+	if (!compare_blocks(blocks[block_index],extern_blocks[shared_blockID])){
+
+		assert(compare_blocks(blocks[block_index],extern_blocks[shared_blockID]));
+
+	}
+
+	__threadfence();
+	__syncwarp();
+
+	blocks[block_index].unlock(warpID);
+
+	//and decrement the count
+
+	if (warpID == 0){
+
+		buffers[buffer] += count;
+
+		buffer_sizes[buffer] -= count;
+
+
+	}
+
+
+}
+
+
+//come back and put me in the final implementation
+// __device__ bool vqf::buffer_end_dump(int warpID, uint64_t buffer){
+
+
+// 	int count = buffer_sizes[buffer];
+
+// 	for (int i =0; i < )
+// }
 
 
 __device__ bool vqf::query(int warpID, uint64_t key){
