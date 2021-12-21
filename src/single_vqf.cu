@@ -270,9 +270,9 @@ __device__ bool vqf::shared_buffer_insert(int warpID, int shared_blockID, uint64
 	//lock_block(warpID, block_index);
 
 
-	if (warpID == 0)
+	if (warpID == 0) extern_blocks[shared_blockID] = blocks[block_index];
 
-	extern_blocks[shared_blockID] = blocks[block_index];
+	//extern_blocks[shared_blockID].load_block(warpID, blocks + block_index);
 
 	extern_blocks[shared_blockID].lock(warpID);
 
@@ -333,9 +333,11 @@ __device__ bool vqf::shared_buffer_insert(int warpID, int shared_blockID, uint64
 
 	extern_blocks[shared_blockID].unlock(warpID);
 
-	if (warpID == 0)
-	blocks[block_index] = extern_blocks[shared_blockID];
 
+	//if (warpID == 0)
+	//blocks[block_index] = extern_blocks[shared_blockID];
+
+	//blocks[block_index].load_block(warpID, extern_blocks + shared_blockID);
 
 
 	__threadfence();
@@ -354,6 +356,175 @@ __device__ bool vqf::shared_buffer_insert(int warpID, int shared_blockID, uint64
 
 
 	}
+
+
+}
+
+
+__device__ bool vqf::multi_buffer_insert(int warpID, int init_blockID, uint64_t start_buffer){
+
+
+	__shared__ vqf_block extern_blocks[WARPS_PER_BLOCK*REGIONS_PER_WARP];
+
+
+	#if DEBUG_ASSERTS
+
+	assert(start_buffer < num_blocks);
+
+	#endif
+
+
+	int shared_blockID = init_blockID * REGIONS_PER_WARP;
+
+
+
+	if (start_buffer + warpID < num_blocks)
+
+	{
+
+
+		extern_blocks[shared_blockID + warpID % REGIONS_PER_WARP] = blocks[start_buffer + warpID % REGIONS_PER_WARP];
+
+	}
+
+	__syncwarp();
+
+	for (int i = 0; i < REGIONS_PER_WARP; i++){
+
+		if (start_buffer + i >= num_blocks) break;
+
+		extern_blocks[shared_blockID + i].lock(warpID);
+	}
+
+
+	// 	
+
+
+	// }
+
+	__syncwarp();
+	
+
+	for (int i = 0; i < REGIONS_PER_WARP; i++){
+
+		if (start_buffer + i >= num_blocks) break;
+
+		int extern_id = shared_blockID + i;
+
+		uint64_t buffer = start_buffer + i;
+
+
+
+		int fill_main = extern_blocks[extern_id].get_fill();
+
+		#ifdef DEBUG_ASSERTS
+		assert(fill_main == 0);
+		#endif
+
+		int count = FILL_CUTOFF - fill_main;
+
+		int buf_size = buffer_sizes[buffer];
+
+		if (buf_size < count) count = buf_size;
+
+		for (int i =0; i < count; i++){
+
+
+
+
+			#if DEBUG_ASSERTS
+
+			int old_fill = extern_blocks[extern_id].get_fill();
+
+
+			//relevant equation
+
+			// (x mod yz) | z == x mod y?
+			//python says no ur a dumbass this is the bug
+			
+			if (!(get_bucket_from_hash(buffers[buffer][i])  == buffer)){
+
+				if (warpID == 0){
+
+					printf("i %d count %d item %llu buffer %llu new_buf %llu\n", i, count, buffers[buffer][i], buffer, get_bucket_from_hash(buffers[buffer][i]));
+				}
+
+				__syncwarp();
+
+				assert((buffers[buffer][i] >> TAG_BITS) % num_blocks  == buffer);
+
+			}
+			
+
+
+			#endif
+
+			uint64_t tag = buffers[buffer][i] & ((1ULL << TAG_BITS) -1);
+			extern_blocks[extern_id].insert(warpID, tag);
+
+			#if DEBUG_ASSERTS
+
+			assert(extern_blocks[extern_id].get_fill() == old_fill+1);
+
+			#endif
+
+		}
+
+
+	//wrap up the loops
+
+	extern_blocks[extern_id].unlock(warpID);
+
+	if (warpID == 0){
+
+		buffers[buffer] += count;
+
+		buffer_sizes[buffer] -= count;
+
+
+	}
+
+	__syncwarp();
+
+	}
+
+
+
+
+	//write back
+
+	// for (int i = 0; i < REGIONS_PER_WARP; i++){
+
+	// 	if (start_buffer + i >= num_blocks) break;
+
+		
+	// 	extern_blocks[shared_blockID + i].unlock(warpID);
+	// }
+
+
+		if (start_buffer + warpID < num_blocks)
+
+			{
+
+
+			blocks[start_buffer + warpID % REGIONS_PER_WARP] = extern_blocks[shared_blockID + warpID % REGIONS_PER_WARP];
+
+
+		}
+	//if (warpID == 0)
+	//blocks[block_index] = extern_blocks[shared_blockID];
+
+	//blocks[block_index].load_block(warpID, extern_blocks + shared_blockID);
+
+
+	__threadfence();
+	__syncwarp();
+
+	//blocks[block_index].unlock(warpID);
+	
+
+	//and decrement the count
+
 
 
 }

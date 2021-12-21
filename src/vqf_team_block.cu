@@ -678,6 +678,22 @@ __device__ bool vqf_block::assert_consistency(){
 	//return(popcnt(md[0]) == VIRTUAL_BUCKETS + 1);
 }
 
+
+//
+__device__ void vqf_block::load_block(int warpID, vqf_block * mem_loc){
+
+	if (warpID == 0)
+
+		md[0] = mem_loc->md[0];
+
+	else if (warpID <= 28){
+
+		tags[warpID - 1] = mem_loc->tags[warpID -1];
+	}
+
+
+}
+
 __device__ bool compare_blocks(vqf_block one, vqf_block two){
 
 

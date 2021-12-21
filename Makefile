@@ -1,4 +1,4 @@
-TARGETS=power_of_one_test team_test
+TARGETS=optimized_vqf_tests gpu_block_test power_of_two_test
 
 ifdef D
 	DEBUG=-g -G
@@ -54,6 +54,10 @@ team_test:							$(OBJDIR)/team_test.o \
 								$(OBJDIR)/vqf_team_block.o \
 								$(OBJDIR)/warp_utils.o
 
+gpu_block_test:						$(OBJDIR)/gpu_block_test.o \
+								$(OBJDIR)/gpu_block.o \
+								$(OBJDIR)/warp_utils.o
+
 vqf_tests:						$(OBJDIR)/vqf_tests.o \
 								$(OBJDIR)/vqf.o \
 								$(OBJDIR)/vqf_block.o
@@ -95,6 +99,19 @@ power_of_one_test:					$(OBJDIR)/power_of_one_test.o \
 								$(OBJDIR)/warp_utils.o \
 								$(OBJDIR)/hashutil.o
 
+optimized_vqf_tests:				$(OBJDIR)/optimized_vqf_tests.o \
+								$(OBJDIR)/optimized_vqf.o \
+								$(OBJDIR)/warp_utils.o \
+								$(OBJDIR)/hashutil.o \
+								$(OBJDIR)/gpu_block.o
+
+
+power_of_two_test:				$(OBJDIR)/power_of_two_test.o \
+								$(OBJDIR)/optimized_vqf.o \
+								$(OBJDIR)/warp_utils.o \
+								$(OBJDIR)/hashutil.o \
+								$(OBJDIR)/gpu_block.o
+
 
 shared_test:					$(OBJDIR)/shared_test.o
 
@@ -112,7 +129,8 @@ $(OBJDIR)/megablock.o: $(LOC_SRC)/megablock.cu $(LOC_INCLUDE)/megablock.cuh
 $(OBJDIR)/mega_vqf.o: $(LOC_SRC)/mega_vqf.cu $(LOC_INCLUDE)/mega_vqf.cuh $(LOC_SRC)/megablock.cu $(LOC_INCLUDE)/megablock.cuh
 $(OBJDIR)/single_vqf.o: $(LOC_SRC)/single_vqf.cu $(LOC_INCLUDE)/single_vqf.cuh $(LOC_SRC)/vqf_team_block.cu $(LOC_INCLUDE)/vqf_team_block.cuh $(LOC_INCLUDE)/metadata.cuh
 $(OBJDIR)/hashutil.o: $(LOC_SRC)/hashutil.cu $(LOC_INCLUDE)/hashutil.cuh
-
+$(OBJDIR)/optimized_vqf.o: $(LOC_SRC)/optimized_vqf.cu $(LOC_INCLUDE)/optimized_vqf.cuh $(LOC_INCLUDE)/metadata.cuh
+$(OBJDIR)/gpu_block.o: $(LOC_SRC)/gpu_block.cu $(LOC_INCLUDE)/gpu_block.cuh
 
 #
 # generic build rules

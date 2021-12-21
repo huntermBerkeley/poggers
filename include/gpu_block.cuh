@@ -1,5 +1,5 @@
-#ifndef _VQF_BLOCK_
-#define _VQF_BLOCK_
+#ifndef _GPU_BLOCK_ 
+#define _GPU_BLOCK_
 
 
 #include <cuda.h>
@@ -35,7 +35,7 @@
 //POSSIBLE BUG:
 //the volatile status of md is what causes the slow performance
 
-typedef struct __attribute__ ((__packed__)) vqf_block {
+typedef struct __attribute__ ((__packed__)) gpu_block {
 
 
 	//metadata and tags change based on the size of 
@@ -59,13 +59,19 @@ typedef struct __attribute__ ((__packed__)) vqf_block {
 	__device__ void lock(int warpID);
 
 
+	__device__ void lock_local(int warpID);
+
+
+
 
 	__device__ void unlock(int warpID);
+
+
+	__device__ void unlock_local(int warpID);
+
+
 	__device__ int max_capacity();
 
-	__device__ uint64_t shift_upper_bits(uint64_t bits, int cutoff);
-	__device__ uint64_t get_upper_bit(uint64_t bits);
-	__device__ void md_0_and_shift_right(int index);
 	__device__ int get_fill();
 
 
@@ -74,26 +80,18 @@ typedef struct __attribute__ ((__packed__)) vqf_block {
 	__device__ bool query(int warpID, uint64_t item);
 
 	__device__ bool remove(int warpID, uint64_t item);
-	//remove related functions
-	__device__ uint64_t get_lower_bit(uint64_t bits);
 
 
-	__device__ uint64_t shift_lower_bits(uint64_t bits, int cutoff);
-
-	__device__ void down_shift(int index);
+	__device__ void bulk_insert(int warpID, uint64_t * items, uint64_t nitems);
 
 
-	__device__ void printBlock();
-
-	__device__ void printMetadata();
+    __device__ int bulk_query(int warpID, uint64_t * items, uint64_t nitems);
 
 
 	__device__ bool assert_consistency();
+	
 
-	__device__ void load_block(int warpID, vqf_block * mem_loc);
-
-
-} vqf_block;
+} gpu_block;
 
 // #if TAG_BITS == 8
 // 	// We are using 8-bit tags.
@@ -131,8 +129,8 @@ typedef struct __attribute__ ((__packed__)) vqf_block {
 
 //DEFINE FUNCS
 
-__device__ bool compare_blocks(vqf_block one, vqf_block two);
+__device__ bool compare_blocks(gpu_block one, gpu_block two);
 
 
 
-#endif //_VQF_BLOCK_
+#endif //GPU_BLOCK_

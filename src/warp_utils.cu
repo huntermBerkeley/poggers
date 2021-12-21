@@ -384,7 +384,6 @@ __device__ void block_8_memmove_remove(int warpID, uint16_t * tags, int index){
 }
 
 
-
-
-
 }
+
+
