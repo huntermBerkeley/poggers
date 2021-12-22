@@ -24,6 +24,9 @@
 #include <thrust/remove.h>
 #include <thrust/device_ptr.h>
 
+#include <chrono>
+#include <iostream>
+
 
 
 struct is_tombstone
@@ -1457,13 +1460,13 @@ __global__ void generate_hashes_and_references(optimized_vqf * vqf, uint64_t nva
 
 
 	
-	combined_hashes[tid] = hash;
+	combined_hashes[2*tid] = hash;
 
-	combined_hashes[tid + nvals] = vqf->get_alt_hash(hash, vqf->get_bucket_from_hash(hash));
+	combined_hashes[2*tid+1] = vqf->get_alt_hash(hash, vqf->get_bucket_from_hash(hash));
 
-	combined_references[tid] = tid;
+	combined_references[2*tid] = tid;
 
-	combined_references[tid + nvals] = tid + nvals;
+	combined_references[2*tid + 1] = tid + nvals;
 
 
 }
@@ -1691,6 +1694,12 @@ __global__ void bulk_buffer_insert(optimized_vqf * vqf){
 
 __host__ void optimized_vqf::insert_power_of_two(uint64_t * vals, uint64_t nvals){
 
+
+	std::chrono::time_point<std::chrono::high_resolution_clock> timings[16];
+	
+	timings[0] = std::chrono::high_resolution_clock::now();
+
+
 	uint64_t * combined_hashes;
 
 
@@ -1711,6 +1720,12 @@ __host__ void optimized_vqf::insert_power_of_two(uint64_t * vals, uint64_t nvals
 	cudaMalloc((void **)&seconds, sizeof(uint8_t)*nvals);
 
 
+	cudaDeviceSynchronize();
+
+
+	timings[1] = std::chrono::high_resolution_clock::now();
+
+
 	//deprecated debug counter
 	// uint64_t * counter;
 
@@ -1722,6 +1737,7 @@ __host__ void optimized_vqf::insert_power_of_two(uint64_t * vals, uint64_t nvals
 
 	cudaDeviceSynchronize();
 
+	timings[2] = std::chrono::high_resolution_clock::now();
 //	counter[0] = 0;
 
 
@@ -1731,25 +1747,49 @@ __host__ void optimized_vqf::insert_power_of_two(uint64_t * vals, uint64_t nvals
 	cudaDeviceSynchronize();
 
 
+	timings[3] = std::chrono::high_resolution_clock::now();
+
+
 	//extract the number of buffers to launch the kernels as small as possible.
 	uint64_t internal_num_blocks = get_num_buffers();
+
+
+	cudaDeviceSynchronize();
+
+	timings[4] = std::chrono::high_resolution_clock::now();
 	
 
 	//code to set the buffer/buffer sizes
  	set_buffers_binary<<<(internal_num_blocks - 1)/1024 +1, 1024>>>(this, 2*nvals, combined_hashes);
 
+
+ 	cudaDeviceSynchronize();
+
+ 	timings[5] = std::chrono::high_resolution_clock::now();
+
  	set_buffer_lens<<<(internal_num_blocks - 1)/1024 +1, 1024>>>(this, 2*nvals, combined_hashes);
 
 
+
+ 	cudaDeviceSynchronize();
+
+ 	timings[6] = std::chrono::high_resolution_clock::now();
  
  	//using the references, fill first/second with the potential slot choices for each item
 	set_references_from_buckets<<<(internal_num_blocks*32 -1)/POWER_BLOCK_SIZE + 1, POWER_BLOCK_SIZE>>>(this, nvals, combined_hashes, combined_references, firsts, seconds);
 	
 
+	cudaDeviceSynchronize();
+
+	timings[7] = std::chrono::high_resolution_clock::now();
 
 	//have the larger slot for each item transform into a tombstone
 	tombstone_from_references<<<(internal_num_blocks*32 -1)/POWER_BLOCK_SIZE + 1, POWER_BLOCK_SIZE>>>(this, nvals, combined_hashes, combined_references, firsts, seconds);
 	
+
+	cudaDeviceSynchronize();
+
+	timings[8] = std::chrono::high_resolution_clock::now();
 
 	//purge the references with tombstones as well so that the reduction is balanced.
 	//This can likely be dropped, it only exists as a precaution for multiple runs.
@@ -1759,6 +1799,7 @@ __host__ void optimized_vqf::insert_power_of_two(uint64_t * vals, uint64_t nvals
 
 	cudaDeviceSynchronize();
 
+	timings[9] = std::chrono::high_resolution_clock::now();
 
 
 
@@ -1776,8 +1817,18 @@ __host__ void optimized_vqf::insert_power_of_two(uint64_t * vals, uint64_t nvals
 
 	//drop the tombstones from the lists - only valid items remain
 	thrust::device_ptr<uint64_t> items_end_thrust = thrust::remove_if(combined_hashes_thrust_ptr, combined_hashes_thrust_ptr + 2*nvals, is_tombstone());
+	
+
+	cudaDeviceSynchronize();
+
+	timings[10] = std::chrono::high_resolution_clock::now();
+
+
 	thrust::device_ptr<uint64_t> refs_end_thrust = thrust::remove_if(combined_references_thrust_ptr, combined_references_thrust_ptr + 2*nvals, is_tombstone());
 
+	cudaDeviceSynchronize();
+
+	timings[11] = std::chrono::high_resolution_clock::now();
 
 
 	//these is some thrust pointer manipulation/correctness assertions
@@ -1807,6 +1858,10 @@ __host__ void optimized_vqf::insert_power_of_two(uint64_t * vals, uint64_t nvals
 	cudaFree(firsts);
 	cudaFree(seconds);
 
+	cudaDeviceSynchronize();
+
+	timings[12] = std::chrono::high_resolution_clock::now();
+
 
 
 	//END OF NOVEL CODE
@@ -1818,7 +1873,16 @@ __host__ void optimized_vqf::insert_power_of_two(uint64_t * vals, uint64_t nvals
 	//reattach buffers
 	set_buffers_binary<<<(internal_num_blocks - 1)/1024 +1, 1024>>>(this, nvals, combined_hashes);
 
+	cudaDeviceSynchronize();
+
+	timings[13] = std::chrono::high_resolution_clock::now();
+
  	set_buffer_lens<<<(internal_num_blocks - 1)/1024 +1, 1024>>>(this, nvals, combined_hashes);
+
+
+ 	cudaDeviceSynchronize();
+
+ 	timings[14] = std::chrono::high_resolution_clock::now();
 
 
  	// dump te bufers
@@ -1827,10 +1891,25 @@ __host__ void optimized_vqf::insert_power_of_two(uint64_t * vals, uint64_t nvals
 
  	cudaDeviceSynchronize();
 
+ 	timings[15] = std::chrono::high_resolution_clock::now();
+
 
  	cudaFree(combined_hashes);
 
  	cudaFree(combined_references);
+
+
+ 	//big ole list of diffs
+ 	std::chrono::duration<double> diffs[15];
+
+
+ 	for (int i =0; i < 14; i++){
+
+ 		diffs[i] = timings[i+1] - timings[i];
+
+ 		std::cout << "diff " << i << ": " << diffs[i].count() << std::endl;
+ 	}
+
 
 
 

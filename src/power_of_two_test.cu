@@ -153,9 +153,8 @@ int main(int argc, char** argv) {
 
 
 
-	
-	my_vqf->insert_power_of_two(dev_vals, nitems);
 
+	my_vqf->insert_power_of_two(dev_vals, nitems);
 
 
 	cudaDeviceSynchronize();
