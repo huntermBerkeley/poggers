@@ -4,7 +4,7 @@
 #define DEBUG_ASSERTS 0
 #define MAX_FILL 28
 #define SINGLE_REGION 0
-#define FILL_CUTOFF 24
+#define FILL_CUTOFF 28
 
 //do blocks assume exclusive access? if yes, no need to lock
 //this is useful for batched scenarios.

@@ -1437,7 +1437,14 @@ __device__ uint64_t optimized_vqf::get_alt_hash(uint64_t hash, uint64_t bucket){
 //POWER_OF_TWO_HASH
 //The following segments of code allow the vqf to perform bulked power-of-two-choice hashing
 //This is performed in iterations to allow for self-balancing - every iteration, each item preps
-//to be inserted into one of two 
+//to be inserted into one of two potential slots
+
+
+
+
+//generate your hash and alternate hash
+//and insert them into the list along with a reference that links your hashes
+// the references will be used to allow the hashes to refer to each other in order to determine the correct position for inserts.
 __global__ void generate_hashes_and_references(optimized_vqf * vqf, uint64_t nvals, uint64_t * vals, uint64_t * combined_hashes, uint64_t * combined_references){
 
 
@@ -1461,8 +1468,9 @@ __global__ void generate_hashes_and_references(optimized_vqf * vqf, uint64_t nva
 
 }
 
-//using the references, set a 
-//references aren't setting correctly
+// using the references, set firsts/seconds
+//  first refers to your primary bucket and firsts[i] is your potential position within the primary bucket
+//  seconds refers to your alternate bucket and seconds[i] is your potential position within the alternate bucket
 __global__ void set_references_from_buckets(optimized_vqf * vqf, uint64_t nvals, uint64_t * combined_hashes, uint64_t * combined_references, uint8_t * firsts, uint8_t * seconds){
 
 
@@ -1518,7 +1526,9 @@ __global__ void set_references_from_buckets(optimized_vqf * vqf, uint64_t nvals,
 }
 
 //now that the references are set up, each item should tombstone the larger of it's inserts
-// how to andle the empty case? For now, successes should tombstone themselves 
+
+//In order to minimize the information needed to create a tombstone, you check the references
+// and become a tombstone if you are the larger insert
 __global__ void tombstone_from_references(optimized_vqf * vqf, uint64_t nvals, uint64_t * combined_hashes, uint64_t * combined_references, uint8_t * firsts, uint8_t * seconds){
 
 
@@ -1676,6 +1686,8 @@ __global__ void bulk_buffer_insert(optimized_vqf * vqf){
 
 
 //sort and merge
+//insert scheme based on power of two hashing
+// - use placement in sorted list as a overestimate of true position
 
 __host__ void optimized_vqf::insert_power_of_two(uint64_t * vals, uint64_t nvals){
 
@@ -1689,6 +1701,8 @@ __host__ void optimized_vqf::insert_power_of_two(uint64_t * vals, uint64_t nvals
 	uint8_t * seconds;
 
 
+	//allocate space for hashes/references. each item will have one hash for each of it's buckets
+	// so allocate 2*nvals
 	cudaMalloc((void **)&combined_hashes, sizeof(uint64_t)*2*nvals);
 
 	cudaMalloc((void **)&combined_references, sizeof(uint64_t)*2*nvals);
@@ -1697,49 +1711,56 @@ __host__ void optimized_vqf::insert_power_of_two(uint64_t * vals, uint64_t nvals
 	cudaMalloc((void **)&seconds, sizeof(uint8_t)*nvals);
 
 
-	uint64_t * counter;
+	//deprecated debug counter
+	// uint64_t * counter;
 
-	cudaMallocManaged((void **)&counter, sizeof(uint64_t));
+	// cudaMallocManaged((void **)&counter, sizeof(uint64_t));
 
-
+	//generate the hash/alt_hash of every item and store them in the correct slot
+	//references correspond to the original item position
 	generate_hashes_and_references<<<(nvals-1)/POWER_BLOCK_SIZE + 1, POWER_BLOCK_SIZE>>>(this, nvals, vals, combined_hashes, combined_references);
 
 	cudaDeviceSynchronize();
 
-	counter[0] = 0;
+//	counter[0] = 0;
 
 
-
+	//sort the combined hashes/references
 	thrust::sort_by_key(thrust::device, combined_hashes, combined_hashes+nvals*2, combined_references);
 
 	cudaDeviceSynchronize();
 
 
-	//need to modify assign_buffers to use buffers as index
+	//extract the number of buffers to launch the kernels as small as possible.
 	uint64_t internal_num_blocks = get_num_buffers();
 	
 
-
+	//code to set the buffer/buffer sizes
  	set_buffers_binary<<<(internal_num_blocks - 1)/1024 +1, 1024>>>(this, 2*nvals, combined_hashes);
 
  	set_buffer_lens<<<(internal_num_blocks - 1)/1024 +1, 1024>>>(this, 2*nvals, combined_hashes);
 
 
  
+ 	//using the references, fill first/second with the potential slot choices for each item
 	set_references_from_buckets<<<(internal_num_blocks*32 -1)/POWER_BLOCK_SIZE + 1, POWER_BLOCK_SIZE>>>(this, nvals, combined_hashes, combined_references, firsts, seconds);
 	
 
+
+	//have the larger slot for each item transform into a tombstone
 	tombstone_from_references<<<(internal_num_blocks*32 -1)/POWER_BLOCK_SIZE + 1, POWER_BLOCK_SIZE>>>(this, nvals, combined_hashes, combined_references, firsts, seconds);
 	
 
+	//purge the references with tombstones as well so that the reduction is balanced.
+	//This can likely be dropped, it only exists as a precaution for multiple runs.
 	purge_references<<<(2*nvals -1) / POWER_BLOCK_SIZE + 1, POWER_BLOCK_SIZE>>>(2*nvals, combined_hashes, combined_references);
 
 
 
 	cudaDeviceSynchronize();
-	//struct required for power_of_two_bulk
-	//has been moved outside of functions so it can be referenced "globally"
-	// struct declared inside of hust func cannot be dereferenced in global
+
+
+
 
 	//count_tombstones<<<(nvals -1)/ POWER_BLOCK_SIZE +1, POWER_BLOCK_SIZE>>>(nvals, firsts, seconds, counter);
 
@@ -1749,16 +1770,17 @@ __host__ void optimized_vqf::insert_power_of_two(uint64_t * vals, uint64_t nvals
 	//printf("Count: %llu \n", counter[0]);
 
 
-	//wrap in device vector to force thurst::device?
 	thrust::device_ptr<uint64_t> combined_hashes_thrust_ptr = thrust::device_pointer_cast(combined_hashes);
-
 	thrust::device_ptr<uint64_t> combined_references_thrust_ptr = thrust::device_pointer_cast(combined_references);
 
 
+	//drop the tombstones from the lists - only valid items remain
 	thrust::device_ptr<uint64_t> items_end_thrust = thrust::remove_if(combined_hashes_thrust_ptr, combined_hashes_thrust_ptr + 2*nvals, is_tombstone());
 	thrust::device_ptr<uint64_t> refs_end_thrust = thrust::remove_if(combined_references_thrust_ptr, combined_references_thrust_ptr + 2*nvals, is_tombstone());
 
 
+
+	//these is some thrust pointer manipulation/correctness assertions
 	uint64_t * items_end = thrust::raw_pointer_cast(items_end_thrust);
    uint64_t * refs_end = thrust::raw_pointer_cast(refs_end_thrust);
 
@@ -1781,9 +1803,16 @@ __host__ void optimized_vqf::insert_power_of_two(uint64_t * vals, uint64_t nvals
 
 	}
 
-
+	//drop the firsts/seconds - these are inefficient and will not make it to release
 	cudaFree(firsts);
 	cudaFree(seconds);
+
+
+
+	//END OF NOVEL CODE
+
+	//After this each item exists only once in the insert list, so we do a bulked insert
+
 
 
 	//reattach buffers
@@ -1792,6 +1821,7 @@ __host__ void optimized_vqf::insert_power_of_two(uint64_t * vals, uint64_t nvals
  	set_buffer_lens<<<(internal_num_blocks - 1)/1024 +1, 1024>>>(this, nvals, combined_hashes);
 
 
+ 	// dump te bufers
  	bulk_buffer_insert<<<(internal_num_blocks*32 -1)/POWER_BLOCK_SIZE + 1, POWER_BLOCK_SIZE>>>(this);
 
 
