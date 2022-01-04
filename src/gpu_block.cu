@@ -7,6 +7,9 @@
 #include <cuda_runtime_api.h>
 #include "include/gpu_block.cuh"
 #include "include/warp_utils.cuh"
+#include "include/metadata.cuh"
+
+#include <cooperative_groups.h>
 
 
 //extra stuff
@@ -420,6 +423,88 @@ __device__ void gpu_block::bulk_insert(int warpID, uint64_t * items, uint64_t ni
 
 
 	__syncwarp();
+
+	return;
+
+}
+
+
+__device__ void gpu_block::bulk_insert_team(cooperative_groups::thread_block_tile<32> warpGroup, uint64_t * items, uint64_t nitems){
+
+	#if DEBUG_ASSERTS
+
+	assert (warpGroup.size() == 32);
+
+	#endif
+
+	int warpID = warpGroup.thread_rank();
+
+	// - slot necessary - the buckets are logical constructs
+	//and don't correspond to true indices.
+
+	uint64_t item = 0;
+
+	if (warpID < nitems)
+
+		item = items[warpID];
+
+	#if TAG_BITS == 8
+		uint8_t tag = item & 0xFF;
+	#elif TAG_BITS == 16
+		uint16_t tag = item & 0xFFFF;
+	#endif
+
+
+	// if (warpGroup.thread_rank() != 0){
+	// 	printf("Halp: %d %d, %d\n", warpGroup.thread_rank(), tag, nitems);
+	// }
+
+	//md_bit is the metadata index to modify
+	//index is the slot we want to insert into the tags
+	int fill = get_fill();
+
+	if (warpID < nitems)
+
+	tags[warpID + fill] = tag;
+
+	__threadfence();
+
+	warpGroup.sync();
+
+	#if DEBUG_ASSERTS
+
+	if (warpID < nitems){
+
+		// if (warpID != 0){
+		// 	assert(tags[warpID + fill-1] != 0);
+		// }
+
+		assert (tags[warpID + fill] == tag);
+
+
+	}
+
+
+	#endif
+
+
+	//and update metadata
+	//its a lot simpler if safety is handled in the vqf
+	//so that this doesn't have to do any checks
+	if (warpID == 0) 
+
+	#if TAG_BITS == 8
+		'YOU DIDNT DO ME YEt';
+	#elif TAG_BITS == 16
+	
+		md[0] = md[0] << nitems;
+		
+	#endif
+
+
+
+
+	warpGroup.sync();
 
 	return;
 

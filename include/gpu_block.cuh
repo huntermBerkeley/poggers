@@ -5,7 +5,7 @@
 #include <cuda.h>
 #include <cuda_runtime_api.h>
 
-
+#include <cooperative_groups.h>
 
 
 
@@ -83,6 +83,8 @@ typedef struct __attribute__ ((__packed__)) gpu_block {
 
 
 	__device__ void bulk_insert(int warpID, uint64_t * items, uint64_t nitems);
+
+	__device__ void bulk_insert_team(cooperative_groups::thread_block_tile<32> warpGroup, uint64_t * items, uint64_t nitems);
 
 
     __device__ int bulk_query(int warpID, uint64_t * items, uint64_t nitems);

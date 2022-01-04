@@ -1,4 +1,4 @@
-TARGETS=optimized_vqf_tests gpu_block_test power_of_two_test
+TARGETS=block_vqf_tests
 
 ifdef D
 	DEBUG=-g -G
@@ -113,6 +113,12 @@ power_of_two_test:				$(OBJDIR)/power_of_two_test.o \
 								$(OBJDIR)/gpu_block.o
 
 
+block_vqf_tests:			$(OBJDIR)/block_vqf_tests.o \
+								$(OBJDIR)/block_vqf.o \
+								$(OBJDIR)/warp_utils.o \
+								$(OBJDIR)/hashutil.o \
+								$(OBJDIR)/gpu_block.o
+
 shared_test:					$(OBJDIR)/shared_test.o
 
 # dependencies between .o files and .cc (or .c) files
@@ -131,6 +137,9 @@ $(OBJDIR)/single_vqf.o: $(LOC_SRC)/single_vqf.cu $(LOC_INCLUDE)/single_vqf.cuh $
 $(OBJDIR)/hashutil.o: $(LOC_SRC)/hashutil.cu $(LOC_INCLUDE)/hashutil.cuh
 $(OBJDIR)/optimized_vqf.o: $(LOC_SRC)/optimized_vqf.cu $(LOC_INCLUDE)/optimized_vqf.cuh $(LOC_INCLUDE)/metadata.cuh
 $(OBJDIR)/gpu_block.o: $(LOC_SRC)/gpu_block.cu $(LOC_INCLUDE)/gpu_block.cuh
+$(OBJDIR)/block_vqf.o: $(LOC_SRC)/block_vqf.cu $(LOC_INCLUDE)/block_vqf.cuh $(LOC_INCLUDE)/metadata.cuh
+
+
 
 #
 # generic build rules

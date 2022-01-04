@@ -7,7 +7,7 @@
 #include <cuda_runtime_api.h>
 
 
-#include "include/optimized_vqf.cuh"
+#include "include/block_vqf.cuh"
 #include "include/gpu_block.cuh"
 #include "include/hashutil.cuh"
 #include "include/metadata.cuh"
@@ -27,6 +27,10 @@
 #include <chrono>
 #include <iostream>
 
+#include <cooperative_groups.h>
+
+using namespace cooperative_groups;
+
 
 
 struct is_tombstone
@@ -38,7 +42,7 @@ struct is_tombstone
 };
 
 
-__device__ void optimized_vqf::lock_block(int warpID, uint64_t lock){
+__device__ void optimized_vqf::lock_block(int warpID, uint64_t team, uint64_t lock){
 
 
 	// if (warpID == 0){
@@ -53,12 +57,12 @@ __device__ void optimized_vqf::lock_block(int warpID, uint64_t lock){
 
 
 	#else 
-	blocks[lock].lock(warpID);
+	blocks[team].internal_blocks[lock].lock(warpID);
 
 	#endif
 }
 
-__device__ void optimized_vqf::unlock_block(int warpID, uint64_t lock){
+__device__ void optimized_vqf::unlock_block(int warpID, uint64_t team,  uint64_t lock){
 
 
 	// if (warpID == 0){
@@ -74,27 +78,27 @@ __device__ void optimized_vqf::unlock_block(int warpID, uint64_t lock){
 
 	#else
 
-	blocks[lock].unlock(warpID);
+	blocks[team].internal_blocks[lock].unlock(warpID);
 
 	#endif
 
 
 }
 
-__device__ void optimized_vqf::lock_blocks(int warpID, uint64_t lock1, uint64_t lock2){
+__device__ void optimized_vqf::lock_blocks(int warpID, uint64_t team1, uint64_t lock1, uint64_t team2, uint64_t lock2){
 
 
-	if (lock1 < lock2){
+	if (team1 * WARPS_PER_BLOCK + lock1 < team2 * WARPS_PER_BLOCK + lock2){
 
-		lock_block(warpID, lock1);
-		lock_block(warpID, lock2);
+		lock_block(warpID, team1, lock1);
+		lock_block(warpID, team2, lock2);
 		//while(atomicCAS(locks + lock2, 0,1) == 1);
 
 	} else {
 
 
-		lock_block(warpID, lock2);
-		lock_block(warpID, lock1);
+		lock_block(warpID, team2, lock2);
+		lock_block(warpID, team1, lock1);
 		
 	}
 
@@ -103,311 +107,297 @@ __device__ void optimized_vqf::lock_blocks(int warpID, uint64_t lock1, uint64_t 
 
 }
 
-__device__ void optimized_vqf::unlock_blocks(int warpID, uint64_t lock1, uint64_t lock2){
+__device__ void optimized_vqf::unlock_blocks(int warpID, uint64_t team1, uint64_t lock1, uint64_t team2, uint64_t lock2){
 
 
-	if (lock1 > lock2){
+	if (team1 * WARPS_PER_BLOCK + lock1 < team2 * WARPS_PER_BLOCK + lock2){
 
-		unlock_block(warpID, lock1);
-		unlock_block(warpID, lock2);
+		unlock_block(warpID, team1, lock1);
+		unlock_block(warpID, team2, lock2);
+		//while(atomicCAS(locks + lock2, 0,1) == 1);
+
+	} else {
+
+
+		unlock_block(warpID, team2, lock2);
+		unlock_block(warpID, team1, lock1);
 		
-	} else {
-
-		unlock_block(warpID, lock2);
-		unlock_block(warpID, lock1);
 	}
+
 	
-
-}
-
-__device__ bool optimized_vqf::insert(int warpID, uint64_t key, bool hashed){
-
-
-	uint64_t hash;
-
-	if (hashed){
-
-		hash = key;
-
-	} else {
-
-		hash = hash_key(key);
-
-
-	}
-
-   uint64_t block_index = get_bucket_from_hash(hash);
-
-   //uint64_t alt_block_index = get_alt_hash(hash, block_index);
-
-
-
- 	lock_block(warpID, block_index);
-
-   int fill_main = blocks[block_index].get_fill();
-
-
-
-   bool toReturn = false;
-
-
-   	if (fill_main < MAX_FILL){
-   		blocks[block_index].insert(warpID, hash);
-
-   		toReturn = true;
-
-
-   		#if DEBUG_ASSERTS
-   		int new_fill = blocks[block_index].get_fill();
-   		if (new_fill != fill_main+1){
-
-   		//blocks[block_index].printMetadata();
-   		printf("Broken Fill: Block %llu, old %d new %d\n", block_index, fill_main, new_fill);
-   		assert(blocks[block_index].get_fill() == fill_main+1);
-   		}
-
-   		assert(blocks[block_index].query(warpID, hash));
-   		#endif
-
-   	}
-
-   unlock_block(warpID, block_index);
-
-
-
-   return toReturn;
-
-
-
 
 
 }
 
-
-//acts like a bulked insert, will dump into the main buffer up to some preset fill ratio
-//likely to be the same value as the optimized one, 20.
-
-__device__ bool optimized_vqf::buffer_insert(int warpID, uint64_t buffer){
+// __device__ bool optimized_vqf::insert(int warpID, uint64_t key, bool hashed){
 
 
-	#if DEBUG_ASSERTS
+// 	uint64_t hash;
 
-	assert(buffer < num_blocks);
+// 	if (hashed){
 
-	#endif
+// 		hash = key;
 
+// 	} else {
 
-	uint64_t block_index = buffer;
-
-	lock_block(warpID, block_index);
-
-	int fill_main = blocks[block_index].get_fill();
-
-	int count = FILL_CUTOFF - fill_main;
-
-	int buf_size = buffer_sizes[buffer];
-
-	if (buf_size < count) count = buf_size;
+// 		hash = hash_key(key);
 
 
-	blocks[block_index].bulk_insert(warpID, buffers[buffer], count);
+// 	}
+
+//    uint64_t block_index = get_bucket_from_hash(hash);
+
+//    //uint64_t alt_block_index = get_alt_hash(hash, block_index);
+
+
+
+//  	lock_block(warpID, block_index);
+
+//    int fill_main = blocks[block_index].get_fill();
+
+
+
+//    bool toReturn = false;
+
+
+//    	if (fill_main < MAX_FILL){
+//    		blocks[block_index].insert(warpID, hash);
+
+//    		toReturn = true;
+
+
+//    		#if DEBUG_ASSERTS
+//    		int new_fill = blocks[block_index].get_fill();
+//    		if (new_fill != fill_main+1){
+
+//    		//blocks[block_index].printMetadata();
+//    		printf("Broken Fill: Block %llu, old %d new %d\n", block_index, fill_main, new_fill);
+//    		assert(blocks[block_index].get_fill() == fill_main+1);
+//    		}
+
+//    		assert(blocks[block_index].query(warpID, hash));
+//    		#endif
+
+//    	}
+
+//    unlock_block(warpID, block_index);
+
+
+
+//    return toReturn;
+
+
+
+
+
+// }
+
+
+//global call to create thread groups and trigger inserts;
+//this is done inside of block_vqf.cu so that cg only needs to be brought in once
+__global__ void bulk_insert_kernel(optimized_vqf * vqf){
+
+	uint64_t tid = threadIdx.x + blockIdx.x*blockDim.x;
+
+
+	//DEBUGGING - This was too small - resulted in multiple threads dropping early
+	//nt sure if this is the only bug
+	uint64_t teamID = tid / (BLOCK_SIZE);
+
+
+
+	//TODO double check me
+	if (teamID >= vqf->num_teams) return;
+
+
+	vqf->mini_filter_insert(teamID);
+
+	return;
+
 	
-	#if EXCLUSIVE_ACCESS
-
-	#else
-	blocks[block_index].unlock(warpID);
-
-	#endif
-
-	//and decrement the count
-
-	if (warpID == 0){
-
-		buffers[buffer] += count;
-
-		buffer_sizes[buffer] -= count;
 
 
-	}
+}
+
+
+
+
+//attach buffers, create thread groups, and launch
+__host__ void optimized_vqf::bulk_insert(uint64_t * items, uint64_t nitems){
+
+
+
+	uint64_t num_teams = get_num_teams();
+
+
+	attach_buffers(items, nitems);
+
+	bulk_insert_kernel<<<num_teams, BLOCK_SIZE>>>(this);
+
+
+
+}
+
+
+//once this is done TODO: add shared memory component
+__device__ bool optimized_vqf::mini_filter_insert(uint64_t teamID){
+
+	__shared__ thread_team_block block;
+
+	//block = blocks[teamID];
+
+	thread_block g = this_thread_block();
+
+	//partition for first phase of buffered inserts
+
+	const int subdivision_size = 32;
+
+
+	//tile partition not splitting into 32?
+	thread_block_tile<32> tile32 = tiled_partition<32>(g);
+
+	int meta_rank = tile32.meta_group_rank();
+
+	block.internal_blocks[meta_rank] = blocks[teamID].internal_blocks[meta_rank];
+	//ew
+	// for (uint64_t i = g.thread_rank() / subdivision_size; i < WARPS_PER_BLOCK; i+= g.size()/subdivision_size){
+
+	// 		insert_single_buffer(tile32, teamID,  i);
+
+	// }
+
+	//replace this later, this is just to verify
+
+	insert_single_buffer(tile32, &block, teamID, tile32.meta_group_rank());
+
+
+
+	g.sync();
+
+
+
+
+	//__syncthreads();
+
+
+
+
+	blocks[teamID].internal_blocks[meta_rank] = block.internal_blocks[meta_rank];
+
+	//after main inserts, the group will perform power of two inserts here
+
+	//reserve a block at the end for inserts?
+	//shuffle dump all blocks there
 
 
 	return true;
 
-
 }
 
-__device__ void optimized_vqf::multi_buffer_insert(int warpID, int init_blockID, uint64_t start_buffer){
 
+__device__ bool optimized_vqf::insert_single_buffer(thread_block_tile<32> warpGroup, thread_team_block * local_blocks, uint64_t teamID, uint64_t buffer){
 
-	__shared__ gpu_block extern_blocks[WARPS_PER_BLOCK*REGIONS_PER_WARP];
 
 
 	#if DEBUG_ASSERTS
 
-	assert(start_buffer < num_blocks);
+	assert(teamID  < num_teams);
+
+	assert( (teamID * WARPS_PER_BLOCK + buffer) < num_blocks);
 
 	#endif
 
+	//at this point the team should be referring to a valid target for insertions
+	//this is a copy of buffer_insert modified to the use the cooperative group API
+	//for the original version check optimized_vqf.cu::buffer_insert
 
-	int shared_blockID = init_blockID * REGIONS_PER_WARP;
+	//local_blocks->internal_blocks[buffer];
 
-
-
-	if (start_buffer + warpID < num_blocks)
-
-	{
-
-
-		extern_blocks[shared_blockID + warpID % REGIONS_PER_WARP] = blocks[start_buffer + warpID % REGIONS_PER_WARP];
-
-	}
-
-	__syncwarp();
-
-	#if EXCLUSIVE_ACCESS
+	uint64_t global_buffer = teamID*WARPS_PER_BLOCK + buffer;
 
 
-	#else
+	int count = FILL_CUTOFF - local_blocks->internal_blocks[buffer].get_fill();
 
-	for (int i = 0; i < REGIONS_PER_WARP; i++){
+	int buf_size = buffer_sizes[global_buffer];
 
-		if (start_buffer + i >= num_blocks) break;
-
-
-		extern_blocks[shared_blockID + i].lock(warpID);
-
-	
-	}
+	if (buf_size < count) count = buf_size;
 
 
-	// 	
-
-
+	// if (warpGroup.thread_rank() != 0){
+	// 	printf("Halp: %d %d\n", warpGroup.thread_rank(), count);
 	// }
 
-	__syncwarp();
+	//modify to be warp group specific
 
-	#endif
-	
-
-	for (int i = 0; i < REGIONS_PER_WARP; i++){
-
-		if (start_buffer + i >= num_blocks) break;
-
-		int extern_id = shared_blockID + i;
-
-		uint64_t buffer = start_buffer + i;
+	local_blocks->internal_blocks[buffer].bulk_insert_team(warpGroup, buffers[global_buffer], count);
 
 
-
-		int fill_main = extern_blocks[extern_id].get_fill();
-
-		#ifdef DEBUG_ASSERTS
-		assert(fill_main == 0);
-		#endif
-
-		int count = FILL_CUTOFF - fill_main;
-
-		int buf_size = buffer_sizes[buffer];
-
-		if (buf_size < count) count = buf_size;
-
-		extern_blocks[extern_id].bulk_insert(warpID, buffers[buffer], count); 
+	//block.bulk_insert(warpGroup.thread_rank(), buffers[global_buffer], count);
 
 
-	//wrap up the loops
+	//local_blocks->internal_blocks[buffer] = block;
 
-	#if EXCLUSIVE_ACCESS
+	if (warpGroup.thread_rank() == 0){
 
-		
+		buffers[global_buffer] += count;
 
-	#else
-
-		extern_blocks[extern_id].unlock(warpID);
-
-	#endif
-
-	if (warpID == 0){
-
-		buffers[buffer] += count;
-
-		buffer_sizes[buffer] -= count;
-
-
+		buffer_sizes[global_buffer] -= count;
 	}
-
-	__syncwarp();
-
-	}
-
-
-	//write back
-
-	// for (int i = 0; i < REGIONS_PER_WARP; i++){
-
-	// 	if (start_buffer + i >= num_blocks) break;
-
-		
-	// 	extern_blocks[shared_blockID + i].unlock(warpID);
-	// }
-
-
-	if (start_buffer + warpID < num_blocks) {
-
-
-		blocks[start_buffer + (warpID % REGIONS_PER_WARP)] = extern_blocks[ shared_blockID + (warpID % REGIONS_PER_WARP)];
-
-
-	}
-	//if (warpID == 0)
-	//blocks[block_index] = extern_blocks[shared_blockID];
-
-	//blocks[block_index].load_block(warpID, extern_blocks + shared_blockID);
-
-
-	__threadfence();
-	__syncwarp();
-
-	//blocks[block_index].unlock(warpID);
-	
-
-	//and decrement the count
-
 
 }
 
 
-__device__ int optimized_vqf::buffer_query(int warpID, uint64_t buffer){
+
+// __device__ bool optimized_vqf::finalize_thread_group(thread_group teamGroup, uint64_t teamID){
 
 
-	#if DEBUG_ASSERTS
 
-	assert(buffer < num_blocks);
-
-	#endif
+// 	//starting with teamGroup and threadGroup - this is just gonna go after the main code
 
 
-	uint64_t block_index = buffer;
+// }
 
-	lock_block(warpID, block_index);
+
+// __device__ void optimized_vqf::dump_thread_group_reserved(thread_group teamGroup, uint64_t teamID){
+
+
+// 	//thread group local atomic? that would be great
+
+
+// }
+
+
+// __device__ int optimized_vqf::buffer_query(int warpID, uint64_t buffer){
+
+
+// 	#if DEBUG_ASSERTS
+
+// 	assert(buffer < num_blocks);
+
+// 	#endif
+
+
+// 	uint64_t block_index = buffer;
+
+// 	lock_block(warpID, block_index);
 
 	
-	int buf_size = buffer_sizes[buffer];
+// 	int buf_size = buffer_sizes[buffer];
 
 
-	int found = blocks[block_index].bulk_query(warpID, buffers[buffer], buf_size);
+// 	int found = blocks[block_index].bulk_query(warpID, buffers[buffer], buf_size);
 	
 
-	unlock_block(warpID, block_index);
+// 	unlock_block(warpID, block_index);
 
-	//and decrement the count
-
-
-
-	return buf_size - found;
+// 	//and decrement the count
 
 
-}
+
+// 	return buf_size - found;
+
+
+// }
 
 
 
@@ -841,155 +831,159 @@ __device__ bool optimized_vqf::query(int warpID, uint64_t key){
   //  }
 
 
+   uint64_t team_index = block_index / WARPS_PER_BLOCK;
 
-   lock_block(warpID, block_index);
+   block_index = block_index % WARPS_PER_BLOCK;
+
+
+   lock_block(warpID, team_index, block_index);
 
    #if DEBUG_ASSERTS
- 	assert(blocks[block_index].assert_consistency());
+ 	assert(blocks[team_index].internal_blocks[block_index].assert_consistency());
 
  	#endif
-   bool found = blocks[block_index].query(warpID, hash);
+   bool found = blocks[team_index].internal_blocks[block_index].query(warpID, hash);
 
    #if DEBUG_ASSERTS
-   assert(blocks[block_index].assert_consistency());
+   assert(blocks[team_index].internal_blocks[block_index].assert_consistency());
    #endif
 
-  	unlock_block(warpID, block_index);
+  	unlock_block(warpID, team_index, block_index);
 
    return found;
 
 }
 
-__device__ bool optimized_vqf::full_query(int warpID, uint64_t key){
+// __device__ bool optimized_vqf::full_query(int warpID, uint64_t key){
 
-	uint64_t hash = hash_key(key);
+// 	uint64_t hash = hash_key(key);
 
-	//uint64_t block_index = ((hash >> TAG_BITS) % (VIRTUAL_BUCKETS*num_blocks))/VIRTUAL_BUCKETS;
-	uint64_t block_index = get_bucket_from_hash(hash);
+// 	//uint64_t block_index = ((hash >> TAG_BITS) % (VIRTUAL_BUCKETS*num_blocks))/VIRTUAL_BUCKETS;
+// 	uint64_t block_index = get_bucket_from_hash(hash);
 
-   //this will generate a mask and get the tag bits
-   //uint64_t tag = hash & ((1ULL << TAG_BITS) -1);
-   //uint64_t alt_block_index = (((hash ^ (tag * 0x5bd1e995)) % (num_blocks*SLOTS_PER_BLOCK)) >> TAG_BITS) % num_blocks;
-	//uint64_t alt_block_index = get_alt_hash(hash, block_index);
+//    //this will generate a mask and get the tag bits
+//    //uint64_t tag = hash & ((1ULL << TAG_BITS) -1);
+//    //uint64_t alt_block_index = (((hash ^ (tag * 0x5bd1e995)) % (num_blocks*SLOTS_PER_BLOCK)) >> TAG_BITS) % num_blocks;
+// 	//uint64_t alt_block_index = get_alt_hash(hash, block_index);
 
-  //  while (block_index == alt_block_index){
-		// alt_block_index = (alt_block_index * (tag * 0x5bd1e995)) % num_blocks;
-  //  }
-
-
-
-   lock_block(warpID, block_index);
-
-   #if DEBUG_ASSERTS
- 	assert(blocks[block_index].assert_consistency());
-
- 	#endif
-   bool found = blocks[block_index].query(warpID, hash);
-
-   #if DEBUG_ASSERTS
-   assert(blocks[block_index].assert_consistency());
-   #endif
-
-  	unlock_block(warpID, block_index);
+//   //  while (block_index == alt_block_index){
+// 		// alt_block_index = (alt_block_index * (tag * 0x5bd1e995)) % num_blocks;
+//   //  }
 
 
 
-  	if (found) return true;
+//    lock_block(warpID, block_index);
 
-   //check the other block
+//    #if DEBUG_ASSERTS
+//  	assert(blocks[block_index].assert_consistency());
 
-  	uint64_t alt_hash = get_alt_hash(hash, block_index);
+//  	#endif
+//    bool found = blocks[block_index].query(warpID, hash);
 
-   uint64_t alt_block_index = get_bucket_from_hash(alt_hash);
+//    #if DEBUG_ASSERTS
+//    assert(blocks[block_index].assert_consistency());
+//    #endif
 
-   lock_block(warpID, alt_block_index);
+//   	unlock_block(warpID, block_index);
 
 
-   found = blocks[alt_block_index].query(warpID, alt_hash);
 
-   unlock_block(warpID, alt_block_index);
+//   	if (found) return true;
 
-   return found;
-}
+//    //check the other block
+
+//   	uint64_t alt_hash = get_alt_hash(hash, block_index);
+
+//    uint64_t alt_block_index = get_bucket_from_hash(alt_hash);
+
+//    lock_block(warpID, alt_block_index);
+
+
+//    found = blocks[alt_block_index].query(warpID, alt_hash);
+
+//    unlock_block(warpID, alt_block_index);
+
+//    return found;
+// }
 
 
 //BUG: insert and remove seems to not be correct
 //V1: uint64_t block_index = ((hash >> TAG_BITS) % (VIRTUAL_BUCKETS*num_blocks))/VIRTUAL_BUCKETS;
 //V2: uint64_t block_index = (hash >> TAG_BITS) % num_blocks;
 
-__device__ bool optimized_vqf::remove(int warpID, uint64_t key){
+// __device__ bool optimized_vqf::remove(int warpID, uint64_t key){
 
-	uint64_t hash = hash_key(key);
-
-
-	uint64_t block_index = get_bucket_from_hash(hash);
-
-   //this will generate a mask and get the tag bits
-	//uint64_t alt_block_index = get_alt_hash(hash, block_index);
-
-  //  while (block_index == alt_block_index){
-		// alt_block_index = (alt_block_index * (tag * 0x5bd1e995)) % num_blocks;
-  //  }
-
-  		lock_block(warpID, block_index);
+// 	uint64_t hash = hash_key(key);
 
 
-  		#if DEBUG_ASSERTS
+// 	uint64_t block_index = get_bucket_from_hash(hash);
 
-  		assert(blocks[block_index].assert_consistency());
+//    //this will generate a mask and get the tag bits
+// 	//uint64_t alt_block_index = get_alt_hash(hash, block_index);
 
+//   //  while (block_index == alt_block_index){
+// 		// alt_block_index = (alt_block_index * (tag * 0x5bd1e995)) % num_blocks;
+//   //  }
 
-		int old_fill = blocks[block_index].get_fill();
-
-		//assert(blocks[block_index].assert_consistency());
-
-		uint64_t md_before = blocks[block_index].md[0];
-
-
-		#endif
-
-   bool found = blocks[block_index].remove(warpID, hash);
+//   		lock_block(warpID, block_index);
 
 
-      #if DEBUG_ASSERTS
- 		int new_fill = blocks[block_index].get_fill();
+//   		#if DEBUG_ASSERTS
 
- 		//assert(blocks[block_index].assert_consistency());
+//   		assert(blocks[block_index].assert_consistency());
 
- 		uint64_t md_after = blocks[block_index].md[0];
 
- 		if (!found){
+// 		int old_fill = blocks[block_index].get_fill();
 
- 			assert(md_before == md_after);
+// 		//assert(blocks[block_index].assert_consistency());
+
+// 		uint64_t md_before = blocks[block_index].md[0];
+
+
+// 		#endif
+
+//    bool found = blocks[block_index].remove(warpID, hash);
+
+
+//       #if DEBUG_ASSERTS
+//  		int new_fill = blocks[block_index].get_fill();
+
+//  		//assert(blocks[block_index].assert_consistency());
+
+//  		uint64_t md_after = blocks[block_index].md[0];
+
+//  		if (!found){
+
+//  			assert(md_before == md_after);
 
  			
 
- 		} else {
+//  		} else {
 
- 			assert(new_fill >= 0);
+//  			assert(new_fill >= 0);
 
- 			if(old_fill-1 != new_fill){
+//  			if(old_fill-1 != new_fill){
 
 
- 				assert(blocks[block_index].assert_consistency());
- 				blocks[block_index].remove(warpID, hash);
+//  				assert(blocks[block_index].assert_consistency());
+//  				blocks[block_index].remove(warpID, hash);
 
- 				assert(old_fill-1 == new_fill);
- 			}
- 		}
+//  				assert(old_fill-1 == new_fill);
+//  			}
+//  		}
  		
 
  		
 
- 		#endif
+//  		#endif
 
-   unlock_block(warpID, block_index);
+//    unlock_block(warpID, block_index);
 
-   //copy could be deleted from this instance
+//    //copy could be deleted from this instance
 
-	 return found;
+// 	 return found;
 
-}
+// }
 
 
 // __device__ bool vqf::insert(uint64_t hash){
@@ -1316,6 +1310,17 @@ __host__ uint64_t optimized_vqf::get_num_buffers(){
  	return internal_num_blocks;
 }
 
+__host__ uint64_t optimized_vqf::get_num_teams(){
+
+	uint64_t internal_num_teams;
+
+	cudaMemcpy(&internal_num_teams, ((uint64_t * ) this) + 1, sizeof(uint64_t), cudaMemcpyDeviceToHost);
+
+ 	cudaDeviceSynchronize();
+
+ 	return internal_num_teams;
+}
+
 
 //have the VQF sort the input dataset and attach the buffers to the data
 
@@ -1348,13 +1353,15 @@ __global__ void vqf_block_setup(optimized_vqf * vqf){
 	uint64_t tid = threadIdx.x + blockDim.x*blockIdx.x;
 
 	if (tid >= vqf->num_blocks) return;
+
+
  
-	vqf->blocks[tid].setup();
+	vqf->blocks[tid / WARPS_PER_BLOCK].internal_blocks[tid % WARPS_PER_BLOCK].setup();
 
 
 	#if EXCLUSIVE_ACCESS
 
-	vqf->blocks[tid].lock(0);
+	vqf->blocks[tid / WARPS_PER_BLOCK].internal_blocks[tid % WARPS_PER_BLOCK].lock(0);
 
 	#endif
 
@@ -1372,15 +1379,19 @@ __host__ optimized_vqf * build_vqf(uint64_t nitems){
 	//this seems weird but whatever
 	uint64_t num_blocks = (nitems -1)/SLOTS_PER_BLOCK + 1;
 
+	uint64_t num_teams = (num_blocks-1) / WARPS_PER_BLOCK + 1;
 
-	printf("Bytes used: %llu for %llu blocks.\n", num_blocks*sizeof(gpu_block),  num_blocks);
+	//rewrite num_blocks to account for any expansion.
+	num_blocks = num_teams*WARPS_PER_BLOCK;
+
+	printf("Bytes used: %llu for %llu blocks.\n", num_teams*sizeof(thread_team_block),  num_blocks);
 
 
 	optimized_vqf * host_vqf;
 
 	optimized_vqf * dev_vqf;
 
-	gpu_block * blocks;
+	thread_team_block * blocks;
 
 	cudaMallocHost((void ** )& host_vqf, sizeof(optimized_vqf));
 
@@ -1389,18 +1400,24 @@ __host__ optimized_vqf * build_vqf(uint64_t nitems){
 	//init host
 	host_vqf->num_blocks = num_blocks;
 
-	//allocate blocks
-	cudaMalloc((void **)&blocks, num_blocks*sizeof(gpu_block));
+	host_vqf->num_teams = num_teams;
 
-	cudaMemset(blocks, 0, num_blocks*sizeof(gpu_block));
+	//allocate blocks
+	cudaMalloc((void **)&blocks, num_teams*sizeof(thread_team_block));
+
+	cudaMemset(blocks, 0, num_teams*sizeof(thread_team_block));
 
 	host_vqf->blocks = blocks;
 
 
 	//external locks
+
+	//TODO: get rid of these they're not necessary
 	int * locks;
-	cudaMalloc((void ** )&locks, num_blocks*sizeof(int));
-	cudaMemset(locks, 0, num_blocks*sizeof(int));
+
+	//numblocks or 1
+	cudaMalloc((void ** )&locks,1*sizeof(int));
+	cudaMemset(locks, 0, 1*sizeof(int));
 
 
 	host_vqf->locks = locks;
@@ -1408,6 +1425,8 @@ __host__ optimized_vqf * build_vqf(uint64_t nitems){
 
 	uint64_t ** buffers;
 	uint64_t * buffer_sizes;
+
+	//in this scheme blocks are per 
 
 	cudaMalloc((void **)& buffers, num_blocks*sizeof(uint64_t *));
 	cudaMemset(buffers, 0, num_blocks*sizeof(uint64_t * ));
@@ -1447,6 +1466,8 @@ __device__ uint64_t optimized_vqf::get_bucket_from_hash(uint64_t hash){
 
 
 
+//TODO: modify this to only refer to the local buckets
+
 
 //generate the alternate hash for inserts, the new version requires a call to 
 // get_bucket+from_hash as well, but has the additional benefit of returning a working key.
@@ -1470,514 +1491,6 @@ __device__ uint64_t optimized_vqf::get_alt_hash(uint64_t hash, uint64_t bucket){
 
 	return alt_block_index;
 }
-
-
-
-
-//POWER_OF_TWO_HASH
-//The following segments of code allow the vqf to perform bulked power-of-two-choice hashing
-//This is performed in iterations to allow for self-balancing - every iteration, each item preps
-//to be inserted into one of two potential slots
-
-
-
-
-//generate your hash and alternate hash
-//and insert them into the list along with a reference that links your hashes
-// the references will be used to allow the hashes to refer to each other in order to determine the correct position for inserts.
-__global__ void generate_hashes_and_references(optimized_vqf * vqf, uint64_t nvals, uint64_t * vals, uint64_t * combined_hashes, uint64_t * combined_references){
-
-
-	uint64_t tid = threadIdx.x + blockDim.x*blockIdx.x;
-
-	if (tid >= nvals) return;
-
-
-	uint64_t hash = vqf->hash_key(vals[tid]);
-
-	uint64_t alt_hash = vqf->get_alt_hash(hash, vqf->get_bucket_from_hash(hash));
-
-
-	
-	combined_hashes[2*tid] = hash;
-
-	combined_hashes[2*tid+1] = alt_hash;
-
-	combined_references[2*tid] = tid;
-
-	combined_references[2*tid + 1] = tid + nvals;
-
-
-}
-
-// using the references, set firsts/seconds
-//  first refers to your primary bucket and firsts[i] is your potential position within the primary bucket
-//  seconds refers to your alternate bucket and seconds[i] is your potential position within the alternate bucket
-__global__ void set_references_from_buckets(optimized_vqf * vqf, uint64_t nvals, const __restrict__ uint64_t * combined_hashes, uint64_t * combined_references, uint8_t * firsts, uint8_t * seconds){
-
-
-	uint64_t tid = threadIdx.x + blockDim.x*blockIdx.x;
-
-	uint64_t teamID = tid / 32;
-
-	int warpID = tid % 32;
-
-
-	if (teamID >= vqf->num_blocks) return;
-
-	uint64_t bucket_offset = vqf->buffers[teamID] - combined_hashes;
-
-
-	//if (bucket_offset > vqf->num_blocks)
-
-	int bucket_max = vqf->buffer_sizes[teamID];
-
-
-	for(int i=warpID; i < bucket_max; i+= 32){
-
-
-		//assign the items back based on i
-		uint64_t reference = combined_references[bucket_offset + i];
-
-
-		if (reference >= nvals){
-
-			reference -= nvals;
-
-			seconds[reference] = i;
-		} else {
-
-			firsts[reference] = i;
-		}
-
-		// if (reference >= nvals){
-		// 	reference -= nvals;
-		// 	loc = seconds;
-		// }
-
-		// #if DEBUG_ASSERTS
-
-		// assert(reference < nvals);
-
-		// #endif
-
-		// loc[reference] = i;
-	}
-
-
-}
-
-//now that the references are set up, each item should tombstone the larger of it's inserts
-
-//In order to minimize the information needed to create a tombstone, you check the references
-// and become a tombstone if you are the larger insert
-__global__ void tombstone_from_references(optimized_vqf * vqf, uint64_t nvals, uint64_t * combined_hashes, const __restrict__ uint64_t * combined_references, uint8_t * firsts, uint8_t * seconds){
-
-
-
-	uint64_t tid = threadIdx.x + blockDim.x*blockIdx.x;
-
-	uint64_t teamID = tid / 32;
-
-	int warpID = tid % 32;
-
-	if (teamID >= vqf->num_blocks) return;
-
-	uint64_t bucket_offset = vqf->buffers[teamID] - combined_hashes;
-
-
-	
-	int bucket_max = vqf->buffer_sizes[teamID];
-
-
-	for(int i=warpID; i < bucket_max; i+= 32){
-
-		uint64_t reference = combined_references[bucket_offset + i];
-
-
-		//longer unwrapped version of hte logic used in tombstoning
-		if (reference >= nvals){
-
-			//secondary key
-			reference -= nvals;
-
-			if (seconds[reference] >= firsts[reference]){
-
-				combined_hashes[bucket_offset + i] = TOMBSTONE;
-				
-
-			}
-
-		} else {
-
-			//primary key
-
-			if (firsts[reference] > seconds[reference]){
-
-				combined_hashes[bucket_offset + i] = TOMBSTONE;
-
-			}
-
-
-		}
-
-		// if (reference == TOMBSTONE) printf("weird bug!\n");
-
-		// uint8_t * primary_loc = firsts;
-		// uint8_t * secondary_loc = seconds;
-
-		// if (reference >= nvals){
-
-		// 	reference -= nvals;
-		// 	primary_loc = seconds;
-		// 	secondary_loc = firsts;
-
-
-		// }
-
-		// #if DEBUG_ASSERTS
-
-		// assert(reference < nvals);
-
-		// #endif
-
-		// //rely on warp optimizer to sync
-
-		// //if the values are equal, make sure to drop secondary
-
-
-		// if (primary_loc[reference] >= secondary_loc[reference]){
-
-		// 	//secondary location is smaller, if valid we should tombstone ourselves
-		// 	if (secondary_loc[reference] < MAX_FILL){
-
-		// 		//secondary_loc is being written!
-		// 		 //combined_references[bucket_offset + i] = TOMBSTONE;
-		// 		 combined_hashes[bucket_offset + i] = TOMBSTONE;
-
-		// 	}
-
-		// }
-		
-
-
-
-	}
-
-
-
-}
-
-
-
-
-//match references to hashes
-__global__ void purge_references(uint64_t nvals, const __restrict__ uint64_t * combined_hashes, uint64_t * combined_references){
-
-	uint64_t tid = threadIdx.x + blockDim.x * blockIdx.x;
-
-	if (tid >= nvals) return;
-
-	if (combined_hashes[tid] == TOMBSTONE) combined_references[tid] = TOMBSTONE;
-
-}
-
-
-// //run some assertion checks that the buffers are accurrately dropping the correct value
-// __global__ void check_bucket_tombstones(optimized_vqf * vqf, uint64_t nvals, uint64_t * combined_hashes, uint64_t * combined_references, uint8_t * firsts, uint8_t * seconds){
-
-// 	uint64_t 
-
-
-
-// }
-
-
-//we can estimate the number of items that need to be tombstoned
-__global__ void count_tombstones(uint64_t nvals, uint8_t * firsts, uint8_t * seconds, uint64_t * counter){
-
-
-	uint64_t tid = threadIdx.x + blockDim.x*blockIdx.x;
-
-	if (tid >= nvals) return;
-
-	if (firsts[tid] < MAX_FILL || seconds[tid] < MAX_FILL){
-
-		atomicAdd((unsigned long long int *) counter, 1ULL);
-	}
-
-}
-
-
-//precondition - buffers are formatted and prepper for the insert
-__global__ void bulk_buffer_insert(optimized_vqf * vqf){
-
-
-	uint64_t tid = threadIdx.x + blockDim.x * blockIdx.x;
-
-	uint64_t teamID = tid/32;
-
-	int warpID = tid % 32;
-
-	if (teamID >= vqf->num_blocks) return;
-
-	vqf->buffer_insert(warpID, teamID);
-
-
-}
-
-
-//sort and merge
-//insert scheme based on power of two hashing
-// - use placement in sorted list as a overestimate of true position
-
-__host__ void optimized_vqf::insert_power_of_two(uint64_t * combined_hashes, uint64_t nvals){
-
-
-	std::chrono::time_point<std::chrono::high_resolution_clock> timings[18];
-	
-	timings[0] = std::chrono::high_resolution_clock::now();
-
-
-	//uint64_t * combined_hashes;
-
-
-	uint64_t * combined_references;
-
-	uint8_t  * firsts;
-
-	uint8_t * seconds;
-
-
-	//allocate space for hashes/references. each item will have one hash for each of it's buckets
-	// so allocate 2*nvals
-	//cudaMalloc((void **)&combined_hashes, sizeof(uint64_t)*2*nvals);
-
-	cudaMalloc((void **)&combined_references, sizeof(uint64_t)*2*nvals);
-
-	cudaMalloc((void **)&firsts, sizeof(uint8_t)*nvals);
-	cudaMalloc((void **)&seconds, sizeof(uint8_t)*nvals);
-
-
-	cudaDeviceSynchronize();
-
-
-	timings[1] = std::chrono::high_resolution_clock::now();
-
-
-	//deprecated debug counter
-	// uint64_t * counter;
-
-	// cudaMallocManaged((void **)&counter, sizeof(uint64_t));
-
-	//generate the hash/alt_hash of every item and store them in the correct slot
-	//references correspond to the original item position
-	//generate_hashes_and_references<<<(nvals-1)/POWER_BLOCK_SIZE + 1, POWER_BLOCK_SIZE>>>(this, nvals, vals, combined_hashes, combined_references);
-
-
-	//first step is to hash all references
-	hash_all<<<((2*nvals) -1)/ POWER_BLOCK_SIZE+ 1, POWER_BLOCK_SIZE>>>(this, combined_hashes, combined_hashes, 2*nvals);
-
-	//hash_all(optimized_vqf* my_vqf, uint64_t* vals, uint64_t* hashes, uint64_t nvals) {
-
-
-	cudaDeviceSynchronize();
-
-	timings[2] = std::chrono::high_resolution_clock::now();
-
-	alt_hash_all<<<(nvals-1)/POWER_BLOCK_SIZE+1, POWER_BLOCK_SIZE>>>(this, combined_hashes + nvals, nvals);
-
-
-	cudaDeviceSynchronize();
-
-	timings[3] = std::chrono::high_resolution_clock::now();
-
-
-	init_references<<<(2*nvals -1)/POWER_BLOCK_SIZE + 1, POWER_BLOCK_SIZE>>>(combined_references, nvals);
-	cudaDeviceSynchronize();
-
-	timings[4] = std::chrono::high_resolution_clock::now();
-//	counter[0] = 0;
-
-
-	//sort the combined hashes/references
-	thrust::sort_by_key(thrust::device, combined_hashes, combined_hashes+nvals*2, combined_references);
-
-	cudaDeviceSynchronize();
-
-
-	timings[5] = std::chrono::high_resolution_clock::now();
-
-
-	//extract the number of buffers to launch the kernels as small as possible.
-	uint64_t internal_num_blocks = get_num_buffers();
-
-
-	cudaDeviceSynchronize();
-
-	timings[6] = std::chrono::high_resolution_clock::now();
-	
-
-	//code to set the buffer/buffer sizes
- 	set_buffers_binary<<<(internal_num_blocks - 1)/1024 +1, 1024>>>(this, 2*nvals, combined_hashes);
-
-
- 	cudaDeviceSynchronize();
-
- 	timings[7] = std::chrono::high_resolution_clock::now();
-
- 	set_buffer_lens<<<(internal_num_blocks - 1)/1024 +1, 1024>>>(this, 2*nvals, combined_hashes);
-
-
-
- 	cudaDeviceSynchronize();
-
- 	timings[8] = std::chrono::high_resolution_clock::now();
-
- 	//set references from buckets
- 
- 	//using the references, fill first/second with the potential slot choices for each item
-	set_references_from_buckets<<<(internal_num_blocks*32 -1)/POWER_BLOCK_SIZE + 1, POWER_BLOCK_SIZE>>>(this, nvals, combined_hashes, combined_references, firsts, seconds);
-	
-
-	cudaDeviceSynchronize();
-
-	timings[9] = std::chrono::high_resolution_clock::now();
-
-	//have the larger slot for each item transform into a tombstone
-	tombstone_from_references<<<(internal_num_blocks*32 -1)/POWER_BLOCK_SIZE + 1, POWER_BLOCK_SIZE>>>(this, nvals, combined_hashes, combined_references, firsts, seconds);
-	
-
-	cudaDeviceSynchronize();
-
-	timings[10] = std::chrono::high_resolution_clock::now();
-
-	//purge the references with tombstones as well so that the reduction is balanced.
-	//This can likely be dropped, it only exists as a precaution for multiple runs.
-	purge_references<<<(2*nvals -1) / POWER_BLOCK_SIZE + 1, POWER_BLOCK_SIZE>>>(2*nvals, combined_hashes, combined_references);
-
-
-
-	cudaDeviceSynchronize();
-
-	timings[11] = std::chrono::high_resolution_clock::now();
-
-
-
-	//count_tombstones<<<(nvals -1)/ POWER_BLOCK_SIZE +1, POWER_BLOCK_SIZE>>>(nvals, firsts, seconds, counter);
-
-
-	//cudaDeviceSynchronize();
-
-	//printf("Count: %llu \n", counter[0]);
-
-
-	thrust::device_ptr<uint64_t> combined_hashes_thrust_ptr = thrust::device_pointer_cast(combined_hashes);
-	thrust::device_ptr<uint64_t> combined_references_thrust_ptr = thrust::device_pointer_cast(combined_references);
-
-
-	//drop the tombstones from the lists - only valid items remain
-	thrust::device_ptr<uint64_t> items_end_thrust = thrust::remove_if(combined_hashes_thrust_ptr, combined_hashes_thrust_ptr + 2*nvals, is_tombstone());
-	
-
-	cudaDeviceSynchronize();
-
-	timings[12] = std::chrono::high_resolution_clock::now();
-
-
-	thrust::device_ptr<uint64_t> refs_end_thrust = thrust::remove_if(combined_references_thrust_ptr, combined_references_thrust_ptr + 2*nvals, is_tombstone());
-
-	cudaDeviceSynchronize();
-
-	timings[13] = std::chrono::high_resolution_clock::now();
-
-
-	//these is some thrust pointer manipulation/correctness assertions
-	uint64_t * items_end = thrust::raw_pointer_cast(items_end_thrust);
-   uint64_t * refs_end = thrust::raw_pointer_cast(refs_end_thrust);
-
-
-	uint64_t new_nvals = items_end - combined_hashes;
-	uint64_t new_rev_vals = refs_end - combined_references;
-
-	printf("New nvals / old nvals: %llu / %llu \n", new_nvals, nvals);
-
-	printf("Ref vals / old nvals: %llu / %llu \n", new_rev_vals, nvals);
-
-	//buggg - exactly one ref is gonna be weird - cause it points to 0/
-	assert(new_nvals == new_rev_vals);
-
-	if (new_nvals != nvals){
-
-		printf("Not all items could be cleanly inserted - add multiple looks fool.\n");
-		abort();
-
-
-	}
-
-	//drop the firsts/seconds - these are inefficient and will not make it to release
-	cudaFree(firsts);
-	cudaFree(seconds);
-
-	cudaDeviceSynchronize();
-
-	timings[14] = std::chrono::high_resolution_clock::now();
-
-
-
-	//END OF NOVEL CODE
-
-	//After this each item exists only once in the insert list, so we do a bulked insert
-
-
-
-	//reattach buffers
-	set_buffers_binary<<<(internal_num_blocks - 1)/1024 +1, 1024>>>(this, nvals, combined_hashes);
-
-	cudaDeviceSynchronize();
-
-	timings[15] = std::chrono::high_resolution_clock::now();
-
- 	set_buffer_lens<<<(internal_num_blocks - 1)/1024 +1, 1024>>>(this, nvals, combined_hashes);
-
-
- 	cudaDeviceSynchronize();
-
- 	timings[16] = std::chrono::high_resolution_clock::now();
-
-
- 	// dump te bufers
- 	bulk_buffer_insert<<<(internal_num_blocks*32 -1)/POWER_BLOCK_SIZE + 1, POWER_BLOCK_SIZE>>>(this);
-
-
- 	cudaDeviceSynchronize();
-
- 	timings[17] = std::chrono::high_resolution_clock::now();
-
-
- 	// cudaFree(combined_hashes);
-
- 	cudaFree(combined_references);
-
-
- 	//big ole list of diffs
- 	std::chrono::duration<double> diffs[17];
-
-
- 	for (int i =0; i < 17; i++){
-
- 		diffs[i] = timings[i+1] - timings[i];
-
- 		std::cout << "diff " << i << ": " << diffs[i].count() << std::endl;
- 	}
-
-
-
-
-
-}
-
-
 
 
 
