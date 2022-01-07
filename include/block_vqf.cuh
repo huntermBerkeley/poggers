@@ -15,7 +15,7 @@
 typedef struct __attribute__ ((__packed__)) thread_team_block {
 
 
-	gpu_block internal_blocks[WARPS_PER_BLOCK];
+	gpu_block internal_blocks[BLOCKS_PER_THREAD_BLOCK];
 
 } thread_team_block;
 
@@ -48,17 +48,29 @@ typedef struct __attribute__ ((__packed__)) optimized_vqf {
 	__device__ void unlock_blocks(int warpId, uint64_t team1, uint64_t lock1, uint64_t team2, uint64_t lock2);
 
 
-	__host__ void bulk_insert(uint64_t * items, uint64_t nitems);
+	__host__ void bulk_insert(uint64_t * items, uint64_t nitems, uint64_t * misses);
 
-	__device__ bool mini_filter_insert(uint64_t teamID);
+	__device__ bool mini_filter_insert(uint64_t teamID, uint64_t * misses);
 
+	//cooperative_groups::thread_block g,
 	__device__ bool insert_single_buffer(cooperative_groups::thread_block_tile<32> warpGroup, thread_team_block * local_blocks, uint64_t teamID, uint64_t buffer);
+
+	__device__ void dump_remaining_buffers_locking(cooperative_groups::thread_block_tile<32> warpGroup, thread_team_block * local_blocks, uint64_t teamID, uint64_t buffer, uint64_t * misses);
+
+
+	//block variants for debugging
+
+	__device__ bool mini_filter_block(uint64_t * misses);
+
+	__device__ void dump_remaining_buffers_block(thread_team_block * local_blocks, uint64_t blockID, int warpID, int threadID, uint64_t * misses);
+
+    __device__ bool insert_single_buffer_block(thread_team_block * local_blocks, uint64_t blockID, int warpID, int threadID);
 
 
 	__device__ bool query(int warpID, uint64_t key);
 
 	//query but we check both spots - slower
-	//__device__ bool full_query(int warpID, uint64_t key);
+	__device__ bool full_query(int warpID, uint64_t key);
 
 	//__device__ bool remove(int warpID, uint64_t item);
 

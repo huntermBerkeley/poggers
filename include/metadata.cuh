@@ -15,6 +15,8 @@
 #define WARPS_PER_BLOCK 16
 #define BLOCK_SIZE 512
 
+#define BLOCKS_PER_THREAD_BLOCK 512
+
 //# of blocks to be inserted per warp in the bulked insert phase
 #define REGIONS_PER_WARP 8
 

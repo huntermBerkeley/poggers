@@ -99,6 +99,51 @@ __host__ __device__ static inline int bitrank(uint64_t val, int pos) {
 	return val;
 }
 
+__device__ void gpu_block::lock_one_thread(){
+
+	uint64_t * data;
+	#if TAG_BITS == 8
+		data = (uint64_t *) (md + 1);
+	#elif TAG_BITS == 16
+		data = (uint64_t *) md;
+	#endif
+
+
+	uint64_t val = atomicOr((unsigned long long int *) data, LOCK_MASK) & LOCK_MASK;
+
+
+	//uint64_t counter = 0;
+
+	while (val != 0){
+
+
+		val = atomicOr((unsigned long long int *) data, LOCK_MASK) & LOCK_MASK;
+
+	} 
+
+
+
+}
+
+__device__ void gpu_block::unlock_one_thread(){
+
+
+
+
+
+	uint64_t * data;
+	#if TAG_BITS == 8
+		data = (uint64_t *) (md + 1);
+	#elif TAG_BITS == 16
+		data = (uint64_t *) md;
+	#endif
+
+	//double check .ptx on this
+	//could cut down cycles a bit if it isn't short
+	atomicAnd((unsigned long long int *) data, UNLOCK_MASK);
+
+}
+
 
 
 //make sure these work 
@@ -364,7 +409,7 @@ __device__ bool gpu_block::remove(int warpID, uint64_t item){
 
 		#elif TAG_BITS == 8
 
-			you didn't do me yet';å
+			you didn't do me yet';
 
 		#endif
 	}
@@ -374,6 +419,48 @@ __device__ bool gpu_block::remove(int warpID, uint64_t item){
 	return true;
 
 
+}
+
+
+__device__ bool gpu_block::insert_one_thread(uint64_t item){
+
+	#if TAG_BITS == 8
+		uint8_t tag = item & 0xFF;
+	#elif TAG_BITS == 16
+		uint16_t tag = item & 0xFFFF;
+	#endif
+
+	int fill = get_fill();
+
+
+
+
+	if (fill >= MAX_FILL) return false;
+
+	#if DEBUG_ASSERTS
+
+	
+	assert(fill < MAX_FILL);
+
+
+	#endif
+
+
+
+	tags[fill] = tag;
+
+	#if TAG_BITS == 8
+		'YOU DIDNT DO ME YEt';
+	#elif TAG_BITS == 16
+	
+		md[0] = md[0] << 1;
+		
+	#endif
+
+	__threadfence();
+
+
+	return true;
 }
 
 

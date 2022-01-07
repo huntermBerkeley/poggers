@@ -45,7 +45,7 @@ __host__ void insert_timing(optimized_vqf * my_vqf, uint64_t * vals, uint64_t nv
 	auto start = std::chrono::high_resolution_clock::now();
 
 
-	my_vqf->bulk_insert(vals, nvals);
+	my_vqf->bulk_insert(vals, nvals, misses);
 	
 
 	cudaDeviceSynchronize();
@@ -109,6 +109,43 @@ __global__ void test_query_kernel(optimized_vqf* my_vqf, uint64_t * vals, uint64
 }
 
 
+__global__ void test_full_query_kernel(optimized_vqf* my_vqf, uint64_t * vals, uint64_t nvals, uint64_t * misses){
+
+	uint64_t tid = threadIdx.x + blockDim.x*blockIdx.x;
+
+
+	uint64_t teamID = tid / 32;
+	int warpID = tid % 32;
+
+	//if (tid > 0) return;
+	if (teamID >= nvals) return;
+
+
+
+
+	if(!my_vqf->full_query(warpID, vals[teamID])){
+
+		my_vqf->full_query(warpID, vals[teamID]);
+
+		if (warpID == 0)
+		atomicAdd( (unsigned long long int *) misses, 1);
+	}
+
+
+
+	//printf("tid %llu done\n", tid);
+
+	// //does a single thread have this issue?
+	// for (uint64_t i =0; i< nvals; i++){
+
+	// 	assert(vals[i] != 0);
+
+	// 	my_vqf->insert(vals[i]);
+
+	// }
+	
+}
+
 __host__ void query_timing(optimized_vqf* my_vqf, uint64_t * vals, uint64_t nvals, uint64_t * misses){
 
 	auto start = std::chrono::high_resolution_clock::now();
@@ -139,6 +176,36 @@ __host__ void query_timing(optimized_vqf* my_vqf, uint64_t * vals, uint64_t nval
   	cudaDeviceSynchronize();
 }
 
+
+__host__ void full_query_timing(optimized_vqf* my_vqf, uint64_t * vals, uint64_t nvals, uint64_t * misses){
+
+	auto start = std::chrono::high_resolution_clock::now();
+
+
+	test_full_query_kernel<<<(32*nvals -1) / (32 * WARPS_PER_BLOCK) + 1, (32 * WARPS_PER_BLOCK)>>>(my_vqf, vals, nvals, misses);
+
+
+	cudaDeviceSynchronize();
+	//and insert
+
+	auto end = std::chrono::high_resolution_clock::now();
+
+
+  	std::chrono::duration<double> diff = end-start;
+
+
+  	std::cout << "Queried " << nvals << " in " << diff.count() << " seconds\n";
+
+  	printf("Full Queries per second: %f\n", nvals/diff.count());
+
+  	printf("Misses %llu\n", misses[0]);
+
+  	cudaDeviceSynchronize();
+
+  	misses[0] = 0;
+
+  	cudaDeviceSynchronize();
+}
 
 int main(int argc, char** argv) {
 	
@@ -210,13 +277,19 @@ int main(int argc, char** argv) {
 	
 	insert_timing(my_vqf, dev_vals, nitems,  misses);
 
-	 cudaMemcpy(dev_vals, vals, nitems * sizeof(vals[0]), cudaMemcpyHostToDevice);
+	cudaMemcpy(dev_vals, vals, nitems * sizeof(vals[0]), cudaMemcpyHostToDevice);
 
 	 cudaDeviceSynchronize();
 
 	query_timing(my_vqf, dev_vals, nitems,  misses);
 
+	cudaMemcpy(dev_vals, vals, nitems * sizeof(vals[0]), cudaMemcpyHostToDevice);
+
+
 	cudaDeviceSynchronize();
+
+
+	full_query_timing(my_vqf, dev_vals, nitems, misses);
 
 	// cudaMemcpy(dev_vals, vals, nitems * sizeof(vals[0]), cudaMemcpyHostToDevice);
 

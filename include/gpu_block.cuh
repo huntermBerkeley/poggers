@@ -56,6 +56,13 @@ typedef struct __attribute__ ((__packed__)) gpu_block {
 	__device__ void setup();
 
 
+	__device__ void lock_one_thread();
+
+	__device__ void unlock_one_thread();
+
+	__device__ bool insert_one_thread(uint64_t item);
+
+
 	__device__ void lock(int warpID);
 
 

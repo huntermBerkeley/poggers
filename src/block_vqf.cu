@@ -40,7 +40,7 @@ struct is_tombstone
 		return val == TOMBSTONE;
 	}
 };
-
+ 
 
 __device__ void optimized_vqf::lock_block(int warpID, uint64_t team, uint64_t lock){
 
@@ -195,7 +195,7 @@ __device__ void optimized_vqf::unlock_blocks(int warpID, uint64_t team1, uint64_
 
 //global call to create thread groups and trigger inserts;
 //this is done inside of block_vqf.cu so that cg only needs to be brought in once
-__global__ void bulk_insert_kernel(optimized_vqf * vqf){
+__global__ void bulk_insert_kernel(optimized_vqf * vqf, uint64_t * misses){
 
 	uint64_t tid = threadIdx.x + blockIdx.x*blockDim.x;
 
@@ -210,7 +210,7 @@ __global__ void bulk_insert_kernel(optimized_vqf * vqf){
 	if (teamID >= vqf->num_teams) return;
 
 
-	vqf->mini_filter_insert(teamID);
+	vqf->mini_filter_block(misses);
 
 	return;
 
@@ -223,7 +223,7 @@ __global__ void bulk_insert_kernel(optimized_vqf * vqf){
 
 
 //attach buffers, create thread groups, and launch
-__host__ void optimized_vqf::bulk_insert(uint64_t * items, uint64_t nitems){
+__host__ void optimized_vqf::bulk_insert(uint64_t * items, uint64_t nitems, uint64_t * misses){
 
 
 
@@ -232,15 +232,126 @@ __host__ void optimized_vqf::bulk_insert(uint64_t * items, uint64_t nitems){
 
 	attach_buffers(items, nitems);
 
-	bulk_insert_kernel<<<num_teams, BLOCK_SIZE>>>(this);
+	bulk_insert_kernel<<<num_teams, BLOCK_SIZE>>>(this, misses);
 
 
 
 }
 
 
+__device__ bool optimized_vqf::mini_filter_block(uint64_t * misses){
+
+	__shared__ thread_team_block block;
+
+
+	uint64_t tid = threadIdx.x + blockDim.x*blockIdx.x;
+
+	uint64_t blockID = blockIdx.x;
+
+	int warpID = threadIdx.x / 32;
+
+	int threadID = threadIdx.x % 32;
+
+	//each warp should grab one block
+	//TODO modify for #filter blocks per thread_team_block
+
+	for (int i = warpID; i < BLOCKS_PER_THREAD_BLOCK; i+=WARPS_PER_BLOCK){
+
+	block.internal_blocks[i] = blocks[blockIdx.x].internal_blocks[i];
+
+	insert_single_buffer_block(&block, blockID, i, threadID);
+
+
+	}
+
+
+	__syncthreads();
+
+
+	for (int i = warpID; i < BLOCKS_PER_THREAD_BLOCK; i+=WARPS_PER_BLOCK){
+
+   	dump_remaining_buffers_block(&block, blockID, i, threadID, misses);
+
+   	}
+
+   __syncthreads();
+
+
+   for (int i = warpID; i < BLOCKS_PER_THREAD_BLOCK; i+=WARPS_PER_BLOCK){
+
+   //relock blocks so that consistency assertions pass
+   	block.internal_blocks[i].lock_local(threadID);
+ 
+ 	}
+
+   __syncthreads();
+
+   	for (int i = warpID; i < BLOCKS_PER_THREAD_BLOCK; i+=WARPS_PER_BLOCK){
+
+	blocks[blockIdx.x].internal_blocks[i] = block.internal_blocks[i];
+
+	}
+
+}
+
+
+//dump up to FILL_CUTOFF into each block
+// this is handled at a per warp level, and this version does not rely on cooperative groups cause they slow down cudagdb
+__device__ bool optimized_vqf::insert_single_buffer_block(thread_team_block * local_blocks, uint64_t blockID, int warpID, int threadID){
+
+
+
+	#if DEBUG_ASSERTS
+
+	assert(blockID  < num_teams);
+
+	assert( (blockID * BLOCKS_PER_THREAD_BLOCK + warpID) < num_blocks);
+
+	#endif
+
+	//at this point the team should be referring to a valid target for insertions
+	//this is a copy of buffer_insert modified to the use the cooperative group API
+	//for the original version check optimized_vqf.cu::buffer_insert
+
+	//local_blocks->internal_blocks[buffer];
+
+	uint64_t global_buffer = blockID*BLOCKS_PER_THREAD_BLOCK + warpID;
+
+
+	int count = FILL_CUTOFF - local_blocks->internal_blocks[warpID].get_fill();
+
+	int buf_size = buffer_sizes[global_buffer];
+
+	if (buf_size < count) count = buf_size;
+
+
+	// if (warpGroup.thread_rank() != 0){
+	// 	printf("Halp: %d %d\n", warpGroup.thread_rank(), count);
+	// }
+
+	//modify to be warp group specific
+
+	local_blocks->internal_blocks[warpID].bulk_insert(threadID, buffers[global_buffer], count);
+
+	local_blocks->internal_blocks[warpID].unlock(threadID);
+
+	//block.bulk_insert(warpGroup.thread_rank(), buffers[global_buffer], count);
+
+
+	//local_blocks->internal_blocks[buffer] = block;
+
+	if (threadID == 0){
+
+		buffers[global_buffer] += count;
+
+		buffer_sizes[global_buffer] -= count;
+	}
+
+}
+
+
 //once this is done TODO: add shared memory component
-__device__ bool optimized_vqf::mini_filter_insert(uint64_t teamID){
+__device__ bool optimized_vqf::mini_filter_insert(uint64_t teamID, uint64_t * misses){
 
 	__shared__ thread_team_block block;
 
@@ -268,17 +379,30 @@ __device__ bool optimized_vqf::mini_filter_insert(uint64_t teamID){
 
 	//replace this later, this is just to verify
 
-	insert_single_buffer(tile32, &block, teamID, tile32.meta_group_rank());
+	insert_single_buffer(tile32, &block, teamID, meta_rank);
 
 
 
 	g.sync();
 
 
+	//this seems rougly correct, consistent with ~1% error rate
+	// if (tile32.thread_rank() == 0){
+	// 	atomicAdd((unsigned long long int *) misses, buffer_sizes[teamID*WARPS_PER_BLOCK + meta_rank]);
+	// }
 
+
+	dump_remaining_buffers_locking(tile32, &block, teamID, meta_rank, misses);
 
 	//__syncthreads();
 
+	g.sync();
+
+	if (tile32.thread_rank() == 0){
+
+		block.internal_blocks[meta_rank].lock_local(tile32.thread_rank());
+
+	}
 
 
 
@@ -295,6 +419,194 @@ __device__ bool optimized_vqf::mini_filter_insert(uint64_t teamID){
 }
 
 
+__device__ void optimized_vqf::dump_remaining_buffers_locking(thread_block_tile<32> warpGroup, thread_team_block * local_blocks, uint64_t teamID, uint64_t buffer, uint64_t * misses){
+
+
+	//get remaining keys
+
+	int warpID = warpGroup.thread_rank();
+
+	#if DEBUG_ASSERTS
+
+	assert(teamID < num_teams);
+
+	assert((teamID * WARPS_PER_BLOCK + buffer) < num_blocks);
+
+	#endif
+
+	uint64_t global_buffer = teamID*WARPS_PER_BLOCK + buffer;
+
+	int remaining = buffer_sizes[global_buffer];
+
+
+
+
+
+	if (warpID == 0){
+		if (remaining >= 32){
+			printf("Case not handled atm\n");
+
+			//atomicAdd((unsigned long long int *) misses, remaining-32);
+		} 
+	}
+	
+	
+
+	if (warpID < remaining){
+
+		uint64_t hash = buffers[global_buffer][warpID];
+
+
+		#if DEBUG_ASSERTS
+
+		assert(get_bucket_from_hash(hash) == global_buffer);
+
+
+		#endif
+
+		uint64_t alt_hash = get_alt_hash(hash, global_buffer);
+
+		int alt_bucket = get_bucket_from_hash(alt_hash) % (WARPS_PER_BLOCK);
+
+		if (alt_bucket == buffer) alt_bucket = (alt_bucket + 1) % WARPS_PER_BLOCK;
+
+		//copied over from lock_blocks, but for the local case (use shared mem atomics)
+
+		if (buffer < alt_bucket){
+
+			local_blocks->internal_blocks[buffer].lock_one_thread();
+			local_blocks->internal_blocks[alt_bucket].lock_one_thread();
+
+		} else {
+
+			local_blocks->internal_blocks[alt_bucket].lock_one_thread();
+			local_blocks->internal_blocks[buffer].lock_one_thread();
+
+
+		}
+
+
+		//blocks are locked
+
+		if (local_blocks->internal_blocks[buffer].get_fill() < local_blocks->internal_blocks[alt_bucket].get_fill()){
+
+			//TODO: verify queries also check for just hash
+			if (!local_blocks->internal_blocks[buffer].insert_one_thread(hash)){
+
+				atomicAdd((unsigned long long int *) misses, 1);
+
+			}
+		} else {
+			if(!local_blocks->internal_blocks[alt_bucket].insert_one_thread(hash)){
+
+				atomicAdd((unsigned long long int *) misses, 1);
+
+			}
+		}
+
+		local_blocks->internal_blocks[buffer].unlock_one_thread();
+		local_blocks->internal_blocks[alt_bucket].unlock_one_thread();
+
+	}
+
+	
+
+}
+
+
+__device__ void optimized_vqf::dump_remaining_buffers_block(thread_team_block * local_blocks, uint64_t blockID, int warpID, int threadID, uint64_t * misses){
+
+
+	//get remaining keys
+
+
+	#if DEBUG_ASSERTS
+
+	assert(blockID < num_teams);
+
+	assert((blockID * BLOCKS_PER_THREAD_BLOCK + warpID) < num_blocks);
+
+	#endif
+
+	uint64_t global_buffer = blockID*BLOCKS_PER_THREAD_BLOCK + warpID;
+
+	int remaining = buffer_sizes[global_buffer];
+
+
+
+
+
+	if (threadID == 0){
+		if (remaining >= 32){
+			printf("Case not handled atm\n");
+
+			atomicAdd((unsigned long long int *) misses, remaining-32);
+		} 
+	}
+	
+	
+
+	if (threadID < remaining){
+
+		uint64_t hash = buffers[global_buffer][threadID];
+
+
+		#if DEBUG_ASSERTS
+
+		assert(get_bucket_from_hash(hash) == global_buffer);
+
+
+		#endif
+
+		uint64_t alt_hash = get_alt_hash(hash, global_buffer);
+
+		int alt_bucket = get_bucket_from_hash(alt_hash) % (BLOCKS_PER_THREAD_BLOCK);
+
+		if (alt_bucket == warpID) alt_bucket = (alt_bucket + 1) % BLOCKS_PER_THREAD_BLOCK;
+
+		//copied over from lock_blocks, but for the local case (use shared mem atomics)
+
+		if (warpID < alt_bucket){
+
+			local_blocks->internal_blocks[warpID].lock_one_thread();
+			local_blocks->internal_blocks[alt_bucket].lock_one_thread();
+
+		} else {
+
+			local_blocks->internal_blocks[alt_bucket].lock_one_thread();
+			local_blocks->internal_blocks[warpID].lock_one_thread();
+
+
+		}
+
+
+		//blocks are locked
+
+		if (local_blocks->internal_blocks[warpID].get_fill() < local_blocks->internal_blocks[alt_bucket].get_fill()){
+
+			//TODO: verify queries also check for just hash
+			if (!local_blocks->internal_blocks[warpID].insert_one_thread(hash)){
+
+				atomicAdd((unsigned long long int *) misses, 1);
+
+			}
+		} else {
+			if(!local_blocks->internal_blocks[alt_bucket].insert_one_thread(hash)){
+
+				atomicAdd((unsigned long long int *) misses, 1);
+
+			}
+		}
+
+		local_blocks->internal_blocks[warpID].unlock_one_thread();
+		local_blocks->internal_blocks[alt_bucket].unlock_one_thread();
+
+	}
+
+	
+
+}
+ 
 __device__ bool optimized_vqf::insert_single_buffer(thread_block_tile<32> warpGroup, thread_team_block * local_blocks, uint64_t teamID, uint64_t buffer){
 
 
@@ -331,6 +643,7 @@ __device__ bool optimized_vqf::insert_single_buffer(thread_block_tile<32> warpGr
 
 	local_blocks->internal_blocks[buffer].bulk_insert_team(warpGroup, buffers[global_buffer], count);
 
+	local_blocks->internal_blocks[buffer].unlock(warpGroup.thread_rank());
 
 	//block.bulk_insert(warpGroup.thread_rank(), buffers[global_buffer], count);
 
@@ -831,9 +1144,9 @@ __device__ bool optimized_vqf::query(int warpID, uint64_t key){
   //  }
 
 
-   uint64_t team_index = block_index / WARPS_PER_BLOCK;
+   uint64_t team_index = block_index / BLOCKS_PER_THREAD_BLOCK;
 
-   block_index = block_index % WARPS_PER_BLOCK;
+   block_index = block_index % BLOCKS_PER_THREAD_BLOCK;
 
 
    lock_block(warpID, team_index, block_index);
@@ -854,57 +1167,66 @@ __device__ bool optimized_vqf::query(int warpID, uint64_t key){
 
 }
 
-// __device__ bool optimized_vqf::full_query(int warpID, uint64_t key){
+__device__ bool optimized_vqf::full_query(int warpID, uint64_t key){
 
-// 	uint64_t hash = hash_key(key);
+	uint64_t hash = hash_key(key);
 
-// 	//uint64_t block_index = ((hash >> TAG_BITS) % (VIRTUAL_BUCKETS*num_blocks))/VIRTUAL_BUCKETS;
-// 	uint64_t block_index = get_bucket_from_hash(hash);
+	//uint64_t block_index = ((hash >> TAG_BITS) % (VIRTUAL_BUCKETS*num_blocks))/VIRTUAL_BUCKETS;
+	uint64_t block_index = get_bucket_from_hash(hash);
 
-//    //this will generate a mask and get the tag bits
-//    //uint64_t tag = hash & ((1ULL << TAG_BITS) -1);
-//    //uint64_t alt_block_index = (((hash ^ (tag * 0x5bd1e995)) % (num_blocks*SLOTS_PER_BLOCK)) >> TAG_BITS) % num_blocks;
-// 	//uint64_t alt_block_index = get_alt_hash(hash, block_index);
+   //this will generate a mask and get the tag bits
+   //uint64_t tag = hash & ((1ULL << TAG_BITS) -1);
+   //uint64_t alt_block_index = (((hash ^ (tag * 0x5bd1e995)) % (num_blocks*SLOTS_PER_BLOCK)) >> TAG_BITS) % num_blocks;
+	//uint64_t alt_block_index = get_alt_hash(hash, block_index);
 
-//   //  while (block_index == alt_block_index){
-// 		// alt_block_index = (alt_block_index * (tag * 0x5bd1e995)) % num_blocks;
-//   //  }
-
-
-
-//    lock_block(warpID, block_index);
-
-//    #if DEBUG_ASSERTS
-//  	assert(blocks[block_index].assert_consistency());
-
-//  	#endif
-//    bool found = blocks[block_index].query(warpID, hash);
-
-//    #if DEBUG_ASSERTS
-//    assert(blocks[block_index].assert_consistency());
-//    #endif
-
-//   	unlock_block(warpID, block_index);
+  //  while (block_index == alt_block_index){
+		// alt_block_index = (alt_block_index * (tag * 0x5bd1e995)) % num_blocks;
+  //  }
 
 
 
-//   	if (found) return true;
+	uint64_t teamID = block_index / BLOCKS_PER_THREAD_BLOCK;
 
-//    //check the other block
+	int internalID = block_index % BLOCKS_PER_THREAD_BLOCK;
 
-//   	uint64_t alt_hash = get_alt_hash(hash, block_index);
+   lock_block(warpID, teamID, internalID);
 
-//    uint64_t alt_block_index = get_bucket_from_hash(alt_hash);
+   #if DEBUG_ASSERTS
+ 	assert(blocks[teamID].internal_blocks[internalID].assert_consistency());
 
-//    lock_block(warpID, alt_block_index);
+ 	#endif
+   bool found = blocks[teamID].internal_blocks[internalID].query(warpID, hash);
+
+   #if DEBUG_ASSERTS
+   assert(blocks[teamID].internal_blocks[internalID].assert_consistency());
+   #endif
+
+   unlock_block(warpID, teamID, internalID);
 
 
-//    found = blocks[alt_block_index].query(warpID, alt_hash);
 
-//    unlock_block(warpID, alt_block_index);
+   if (found) return true;
 
-//    return found;
-// }
+   //check the other block
+
+   uint64_t alt_hash = get_alt_hash(hash, block_index);
+
+   uint64_t alt_bucket = get_bucket_from_hash(alt_hash) % BLOCKS_PER_THREAD_BLOCK;
+
+   if (alt_bucket == internalID) alt_bucket = (alt_bucket +1 ) % BLOCKS_PER_THREAD_BLOCK;
+
+
+
+   lock_block(warpID, teamID, alt_bucket);
+
+
+   found = blocks[teamID].internal_blocks[alt_bucket].query(warpID, hash);
+
+   unlock_block(warpID, teamID, alt_bucket);
+
+   return found;
+
+}
 
 
 //BUG: insert and remove seems to not be correct
@@ -1356,12 +1678,12 @@ __global__ void vqf_block_setup(optimized_vqf * vqf){
 
 
  
-	vqf->blocks[tid / WARPS_PER_BLOCK].internal_blocks[tid % WARPS_PER_BLOCK].setup();
+	vqf->blocks[tid / BLOCKS_PER_THREAD_BLOCK].internal_blocks[tid % BLOCKS_PER_THREAD_BLOCK].setup();
 
 
 	#if EXCLUSIVE_ACCESS
 
-	vqf->blocks[tid / WARPS_PER_BLOCK].internal_blocks[tid % WARPS_PER_BLOCK].lock(0);
+	vqf->blocks[tid / BLOCKS_PER_THREAD_BLOCK].internal_blocks[tid % BLOCKS_PER_THREAD_BLOCK].lock(0);
 
 	#endif
 
@@ -1379,10 +1701,10 @@ __host__ optimized_vqf * build_vqf(uint64_t nitems){
 	//this seems weird but whatever
 	uint64_t num_blocks = (nitems -1)/SLOTS_PER_BLOCK + 1;
 
-	uint64_t num_teams = (num_blocks-1) / WARPS_PER_BLOCK + 1;
+	uint64_t num_teams = (num_blocks-1) / BLOCKS_PER_THREAD_BLOCK + 1;
 
 	//rewrite num_blocks to account for any expansion.
-	num_blocks = num_teams*WARPS_PER_BLOCK;
+	num_blocks = num_teams*BLOCKS_PER_THREAD_BLOCK;
 
 	printf("Bytes used: %llu for %llu blocks.\n", num_teams*sizeof(thread_team_block),  num_blocks);
 
