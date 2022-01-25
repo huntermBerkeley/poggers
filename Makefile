@@ -1,4 +1,5 @@
-TARGETS=block_vqf_tests
+TARGETS=atomic_tests
+
 
 ifdef D
 	DEBUG=-g -G
@@ -30,13 +31,13 @@ CXX = g++ -std=c++11
 CU = nvcc -dc -x cu
 LD = nvcc
 
-CXXFLAGS = -Wall $(DEBUG) $(PROFILE) $(OPT) $(ARCH) -m64 -I. -Iinclude
+CXXFLAGS = -Wall $(DEBUG) $(PROFILE) $(OPT) $(ARCH) -m64 -I. -Iinclude 
 
 CUFLAGS = $(DEBUG) $(OPT) -arch=sm_70 -rdc=true -I. -Iinclude
 
 CUDALINK = -L/usr/common/software/sles15_cgpu/cuda/11.1.1/lib64/compat -L/usr/common/software/sles15_cgpu/cuda/11.1.1/lib64 -L/usr/common/software/sles15_cgpu/cuda/11.1.1/extras/CUPTI/lib6 -lcurand --nvlink-options -suppress-stack-size-warning
 
-LDFLAGS = $(DEBUG) $(PROFILE) $(OPT) $(CUDALINK) -arch=sm_70 -lpthread -lssl -lcrypto -lm -lcuda -lcudart
+LDFLAGS = $(DEBUG) $(PROFILE) $(OPT) $(CUDALINK) -arch=sm_70 -lpthread -lssl -lcrypto -lm -lcuda -lcudart -lgomp
 
 
 #
@@ -121,6 +122,22 @@ block_vqf_tests:			$(OBJDIR)/block_vqf_tests.o \
 
 shared_test:					$(OBJDIR)/shared_test.o
 
+
+atomic_tests:				$(OBJDIR)/atomic_tests.o \
+							$(OBJDIR)/atomic_vqf.o \
+							$(OBJDIR)/atomic_block.o \
+							$(OBJDIR)/hashutil.o
+
+
+large_sort_tests:			$(OBJDIR)/large_sort_tests.o 
+
+multi_vqf_tests: 			$(OBJDIR)/multi_vqf_tests.o \
+							$(OBJDIR)/multi_vqf_host.o \
+							$(OBJDIR)/atomic_vqf.o \
+							$(OBJDIR)/atomic_block.o \
+							$(OBJDIR)/hashutil.o
+
+
 # dependencies between .o files and .cc (or .c) files
 
 
@@ -138,11 +155,13 @@ $(OBJDIR)/hashutil.o: $(LOC_SRC)/hashutil.cu $(LOC_INCLUDE)/hashutil.cuh
 $(OBJDIR)/optimized_vqf.o: $(LOC_SRC)/optimized_vqf.cu $(LOC_INCLUDE)/optimized_vqf.cuh $(LOC_INCLUDE)/metadata.cuh
 $(OBJDIR)/gpu_block.o: $(LOC_SRC)/gpu_block.cu $(LOC_INCLUDE)/gpu_block.cuh
 $(OBJDIR)/block_vqf.o: $(LOC_SRC)/block_vqf.cu $(LOC_INCLUDE)/block_vqf.cuh $(LOC_INCLUDE)/metadata.cuh
-
+$(OBJDIR)/atomic_block.o: $(LOC_SRC)/atomic_block.cu $(LOC_INCLUDE)/atomic_block.cuh $(LOC_INCLUDE)/metadata.cuh
+$(OBJDIR)/atomic_vqf.o: $(LOC_SRC)/atomic_vqf.cu $(LOC_INCLUDE)/atomic_vqf.cuh $(LOC_INCLUDE)/metadata.cuh
+$(OBJDIR)/multi_vqf_host.o: $(LOC_SRC)/multi_vqf_host.cu $(LOC_INCLUDE)/multi_vqf_host.cuh $(LOC_INCLUDE)/metadata.cuh 
 
 
 #
-# generic build rules
+# generic build rules -- add -Xcompiler -fopenmp to .cu to add back in mpi
 #
 
 $(TARGETS):
@@ -150,13 +169,13 @@ $(TARGETS):
 
 
 $(OBJDIR)/%.o: $(LOC_SRC)/%.cu | $(OBJDIR)
-	$(CU) $(CUFLAGS) $(INCLUDE) -dc $< -o $@
+	$(CU) $(CUFLAGS) $(INCLUDE) -dc $< -o $@ 
 
 
 
 
 $(OBJDIR)/%.o: $(LOC_SRC)/%.cc | $(OBJDIR)
-	$(CXX) $(CXXFLAGS) $(INCLUDE) $< -c -o $@
+	$(CXX) $(CXXFLAGS) $(INCLUDE) $< -c -o $@ 
 
 $(OBJDIR)/%.o: $(LOC_SRC)/%.c | $(OBJDIR)
 	$(CC) $(CXXFLAGS) $(INCLUDE) $< -c -o $@

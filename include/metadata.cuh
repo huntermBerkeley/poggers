@@ -1,10 +1,9 @@
 #ifndef METADATA
 #define METADATA
 
-#define DEBUG_ASSERTS 0
+#define DEBUG_ASSERTS 1
 #define MAX_FILL 28
 #define SINGLE_REGION 0
-#define FILL_CUTOFF 24
 
 //do blocks assume exclusive access? if yes, no need to lock
 //this is useful for batched scenarios.
@@ -12,10 +11,10 @@
 
 
 //number of warps launched per grid block
-#define WARPS_PER_BLOCK 16
-#define BLOCK_SIZE 512
+#define WARPS_PER_BLOCK 32
+#define BLOCK_SIZE 1024
 
-#define BLOCKS_PER_THREAD_BLOCK 512
+#define BLOCKS_PER_THREAD_BLOCK 128
 
 //# of blocks to be inserted per warp in the bulked insert phase
 #define REGIONS_PER_WARP 8
@@ -24,10 +23,15 @@
 //power of 2 metadata
 #define POWER_BLOCK_SIZE 1024
 #define TOMBSTONE 1000000000000ULL
+#define TOMBSTONE_VAL 0
 
 
 
-//metadata for mini-filters
-#define BLOCKS_PER_SM 1024
+//Atomic blocks stats
+
+#define TAG_BITS 8
+#define BYTES_PER_CACHE_LINE 128
+#define CACHE_LINES_PER_BLOCK 2
+
 
 #endif

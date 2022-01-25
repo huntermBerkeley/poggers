@@ -30,7 +30,7 @@
 #include <bitset>
 
 
-#include "include/block_vqf.cuh"
+#include "include/atomic_vqf.cuh"
 #include "include/metadata.cuh"
 
 #include <openssl/rand.h>
@@ -207,13 +207,107 @@ __host__ void full_query_timing(optimized_vqf* my_vqf, uint64_t * vals, uint64_t
   	cudaDeviceSynchronize();
 }
 
+
+__global__ void check_hits(bool * hits, uint64_t * misses, uint64_t nitems){
+
+
+	uint64_t tid = threadIdx.x + blockDim.x*blockIdx.x;
+
+	if (tid >= nitems) return;
+
+	if (!hits[tid]){
+
+		atomicAdd((unsigned long long int *) misses, 1ULL);
+
+	}
+}
+
+__host__ void bulk_query_timing(optimized_vqf* my_vqf, uint64_t * vals, uint64_t nvals, uint64_t * misses){
+
+
+
+	bool * hits;
+
+	cudaMalloc((void **) & hits, nvals*sizeof(bool));
+
+	cudaDeviceSynchronize();
+
+	auto start = std::chrono::high_resolution_clock::now();
+
+
+	
+
+	my_vqf->bulk_query(vals, nvals, hits);
+
+	cudaDeviceSynchronize();
+	//and insert
+
+	auto end = std::chrono::high_resolution_clock::now();
+
+
+
+	//check hits
+
+	check_hits<<<(nvals - 1)/ 1024 + 1, 1024>>>(hits, misses, nvals);
+
+	cudaDeviceSynchronize();
+
+	cudaFree(hits);
+
+  	std::chrono::duration<double> diff = end-start;
+
+
+  	std::cout << "Queried " << nvals << " in " << diff.count() << " seconds\n";
+
+  	printf("Bulk Queries per second: %f\n", nvals/diff.count());
+
+  	printf("Misses %llu\n", misses[0]);
+
+  	cudaDeviceSynchronize();
+
+  	misses[0] = 0;
+
+  	cudaDeviceSynchronize();
+}
+
+
+
+__host__ uint64_t * generate_data(uint64_t nitems){
+
+
+	//malloc space
+
+	uint64_t * vals = (uint64_t *) malloc(nitems * sizeof(uint64_t));
+
+
+	//			   100,000,000
+	uint64_t cap = 100000000ULL;
+
+	for (uint64_t to_fill = 0; to_fill < nitems; to_fill+=0){
+
+		uint64_t togen = (nitems - to_fill > cap) ? cap : nitems - to_fill;
+
+
+		RAND_bytes((unsigned char *) (vals + to_fill), togen * sizeof(uint64_t));
+
+
+
+		to_fill += togen;
+
+		printf("Generated %llu/%llu\n", to_fill, nitems);
+
+	}
+
+	return vals;
+}
+
 int main(int argc, char** argv) {
 	
 
 	uint64_t nbits = atoi(argv[1]);
 
 
-	uint64_t nitems = (1ULL << nbits) * .8;
+	uint64_t nitems = (1ULL << nbits) * .9;
 
 	uint64_t * vals;
 	uint64_t * dev_vals;
@@ -221,9 +315,12 @@ int main(int argc, char** argv) {
 	uint64_t * other_vals;
 	uint64_t * dev_other_vals;
 
-	vals = (uint64_t*) malloc(nitems*sizeof(vals[0]));
 
-	RAND_bytes((unsigned char *)vals, sizeof(*vals) * nitems);
+	vals = generate_data(nitems);
+
+	// vals = (uint64_t*) malloc(nitems*sizeof(vals[0]));
+
+	// RAND_bytes((unsigned char *)vals, sizeof(*vals) * nitems);
 
 
 	// other_vals = (uint64_t*) malloc(nitems*sizeof(other_vals[0]));
@@ -259,7 +356,7 @@ int main(int argc, char** argv) {
 	misses[0] = 0;
 
 
-	optimized_vqf * my_vqf =  build_vqf(1 << nbits);
+	optimized_vqf * my_vqf =  build_vqf(1ULL << nbits);
 
 
 	printf("Setup done\n");
@@ -279,17 +376,21 @@ int main(int argc, char** argv) {
 
 	cudaMemcpy(dev_vals, vals, nitems * sizeof(vals[0]), cudaMemcpyHostToDevice);
 
-	 cudaDeviceSynchronize();
+	cudaDeviceSynchronize();
 
-	query_timing(my_vqf, dev_vals, nitems,  misses);
+	//query_timing(my_vqf, dev_vals, nitems,  misses);
 
 	cudaMemcpy(dev_vals, vals, nitems * sizeof(vals[0]), cudaMemcpyHostToDevice);
 
+	full_query_timing(my_vqf, dev_vals, nitems, misses);
 
 	cudaDeviceSynchronize();
 
 
-	full_query_timing(my_vqf, dev_vals, nitems, misses);
+	cudaMemcpy(dev_vals, vals, nitems * sizeof(vals[0]), cudaMemcpyHostToDevice);
+
+
+	bulk_query_timing(my_vqf, dev_vals, nitems, misses);
 
 	// cudaMemcpy(dev_vals, vals, nitems * sizeof(vals[0]), cudaMemcpyHostToDevice);
 
