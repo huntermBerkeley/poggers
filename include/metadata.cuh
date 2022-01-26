@@ -1,7 +1,7 @@
 #ifndef METADATA
 #define METADATA
 
-#define DEBUG_ASSERTS 1
+#define DEBUG_ASSERTS 0
 #define MAX_FILL 28
 #define SINGLE_REGION 0
 
@@ -11,8 +11,8 @@
 
 
 //number of warps launched per grid block
-#define WARPS_PER_BLOCK 32
-#define BLOCK_SIZE 1024
+#define WARPS_PER_BLOCK 16
+#define BLOCK_SIZE (WARPS_PER_BLOCK * 32)
 
 #define BLOCKS_PER_THREAD_BLOCK 128
 
@@ -21,8 +21,8 @@
 
 
 //power of 2 metadata
-#define POWER_BLOCK_SIZE 1024
-#define TOMBSTONE 1000000000000ULL
+//#define POWER_BLOCK_SIZE 1024
+//#define TOMBSTONE 1000000000000ULL
 #define TOMBSTONE_VAL 0
 
 

@@ -28,13 +28,6 @@
 #include <iostream>
 
 
-struct is_tombstone
-{
-	__host__ __device__ bool operator()(const uint64_t val){
-
-		return val == TOMBSTONE;
-	}
-};
  
 
 __device__ void optimized_vqf::lock_block(int warpID, uint64_t team, uint64_t lock){
@@ -361,6 +354,15 @@ __device__ bool optimized_vqf::query_single_buffer_block(thread_team_block * loc
 
 	uint64_t global_buffer = blockID*BLOCKS_PER_THREAD_BLOCK + warpID;
 
+	#if DEBUG_ASSERTS
+
+	assert(global_buffer / BLOCKS_PER_THREAD_BLOCK == blockID);
+	assert(global_buffer % BLOCKS_PER_THREAD_BLOCK == warpID);
+
+	//if this passes warpID == internalID
+
+	#endif
+
 
 	uint64_t global_offset = buffers[global_buffer] - items;
 
@@ -412,11 +414,14 @@ __device__ bool optimized_vqf::query_single_buffer_block(thread_team_block * loc
 
 	 		int alt_bucket = get_bucket_from_hash(alt_hash) % (BLOCKS_PER_THREAD_BLOCK);
 
+
+	 		//does warpID == internalID
+	 		//internalID = block_index % BLOCKS_PER_THREAD_BLOCK;
 			if (alt_bucket == warpID) alt_bucket = (alt_bucket + 1) % BLOCKS_PER_THREAD_BLOCK;
 
 
 
-			bool found = local_blocks->internal_blocks[alt_bucket].query(threadID, hash);
+			found = local_blocks->internal_blocks[alt_bucket].query(threadID, hash);
 
 		}
 
@@ -1166,19 +1171,20 @@ __device__ bool optimized_vqf::full_query(int warpID, uint64_t key){
 
 	int internalID = block_index % BLOCKS_PER_THREAD_BLOCK;
 
-   lock_block(warpID, teamID, internalID);
+   //lock_block(warpID, teamID, internalID);
 
    #if DEBUG_ASSERTS
- 	assert(blocks[teamID].internal_blocks[internalID].assert_consistency());
+   assert(blocks[teamID].internal_blocks[internalID].assert_consistency());
 
  	#endif
+
    bool found = blocks[teamID].internal_blocks[internalID].query(warpID, hash);
 
    #if DEBUG_ASSERTS
    assert(blocks[teamID].internal_blocks[internalID].assert_consistency());
    #endif
 
-   unlock_block(warpID, teamID, internalID);
+   //unlock_block(warpID, teamID, internalID);
 
 
 
@@ -1194,12 +1200,12 @@ __device__ bool optimized_vqf::full_query(int warpID, uint64_t key){
 
 
 
-   lock_block(warpID, teamID, alt_bucket);
+   //lock_block(warpID, teamID, alt_bucket);
 
 
    found = blocks[teamID].internal_blocks[alt_bucket].query(warpID, hash);
 
-   unlock_block(warpID, teamID, alt_bucket);
+   //unlock_block(warpID, teamID, alt_bucket);
 
    return found;
 
