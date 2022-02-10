@@ -1,5 +1,5 @@
-#ifndef _ATOMIC_BLOCK_H 
-#define _ATOMIC_BLOCK_H
+#ifndef _SPLIT_BLOCK_H 
+#define _SPLIT_BLOCK_H
 
 
 #include <cuda.h>
@@ -38,7 +38,7 @@
 //these features are experimental and might not work
 //this has a much weaker precondition
 
-typedef struct __attribute__ ((__packed__)) atomic_block {
+typedef struct __attribute__ ((__packed__)) split_block {
 
 
 	//tag bits change based on the #of bytes allocated per block
@@ -62,7 +62,7 @@ typedef struct __attribute__ ((__packed__)) atomic_block {
 	__device__ void setup();
 
 
-	__device__ int get_fill();
+	__device__ unsigned int get_fill();
 
 
 	__device__ int max_capacity();
@@ -70,17 +70,17 @@ typedef struct __attribute__ ((__packed__)) atomic_block {
 
 
 	//use a failed CAS to get a better estimate
-	__device__ int get_fill_atomic();
+	__device__ unsigned int get_fill_atomic();
 
 
 
-	__device__ bool insert_one_thread(uint64_t item);
+	__device__ bool insert_one_thread(uint64_t item, bool parity);
 
-	__device__ void insert(int warpID, uint64_t item);
+	__device__ void insert(int warpID, uint64_t item, bool parity);
 
 	__device__ bool query(int warpID, uint64_t item);
 
-	__device__ void bulk_insert(int warpID, uint64_t * items, uint64_t nitems);
+	__device__ void bulk_insert(int warpID, uint64_t * items, uint64_t nitems, uint64_t num_blocks, uint64_t global_buffer);
 
     __device__ int bulk_query(int warpID, uint64_t * items, uint64_t nitems);
 
@@ -90,21 +90,23 @@ typedef struct __attribute__ ((__packed__)) atomic_block {
     __device__ bool remove(int warpID, uint64_t item);
     __device__ bool purge_tombstone(int warpID);
 
-    __device__ bool sort_block(int teamID, int warpID);
 
 	__device__ bool assert_consistency();
 
-	__device__ bool assert_sorted(int warpID);
+
+	__device__ int split(uint64_t * items, uint64_t nitems, uint64_t num_blocks, uint64_t global_buffer, int warpID);
+
+	__device__ unsigned int get_upper(unsigned int md);
+
+	__device__ unsigned int get_lower(unsigned int md);
+
+	__device__ bool calculate_parity(uint64_t item, uint64_t num_blocks, uint64_t global_buffer);
 
 
-	__device__ void sorted_bulk_insert(uint64_t * items, uint64_t nitems, int teamID, int warpID);
 
-
-	//internal join, requires both lists to be sorted
-	__device__ bool sorted_bulk_query(int warpID, uint64_t * items, bool * found, uint64_t nitems);
 	
 
-} atomic_block;
+} split_block;
 
 // #if TAG_BITS == 8
 // 	// We are using 8-bit tags.

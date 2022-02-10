@@ -8,6 +8,7 @@
 #include "include/atomic_block.cuh"
 #include "include/warp_utils.cuh"
 #include "include/metadata.cuh"
+#include "include/sorting_helper.cuh"
 
 //extra stuff
 #include <cuda.h>
@@ -99,6 +100,7 @@ __device__ void atomic_block::insert(int warpID, uint64_t item){
 
 __device__ bool atomic_block::query(int warpID, uint64_t item){
 
+
 	#if TAG_BITS == 8
 		uint8_t tag = item & 0xFF;
 
@@ -111,6 +113,8 @@ __device__ bool atomic_block::query(int warpID, uint64_t item){
 	}
 
 	int fill = get_fill();
+
+//	int fill_cutoff = ((fill -1)/32 + 1) * 32;
 
 	int ballot = 0;
 
@@ -135,6 +139,22 @@ __device__ bool atomic_block::query(int warpID, uint64_t item){
 	if (thread_to_query == -1) return false;
 
 	return true;
+
+
+	// for (int i = warpID; i < fill_cutoff; i+=32){
+
+	// 	if (i < fill && tags[i] == tag) ballot = 1;
+
+	// 	unsigned int ballot_result = __ballot_sync(0xffffffff, ballot);
+
+	// 	int thread_to_query = __ffs(ballot_result) -1;
+
+
+	// 	if (thread_to_query != -1) return true;
+	// }
+
+
+	// return false;
 
 
 }
@@ -365,6 +385,64 @@ __device__ void atomic_block::bulk_insert(int warpID, uint64_t * items, uint64_t
 }
 
 
+__device__ void atomic_block::sorted_bulk_insert(uint64_t * items, uint64_t nitems, int teamID, int warpID){
+	
+
+	
+	//for the 16 bit 64 byte case maybe write a preprocessor directive to not do the loop
+
+
+
+	int fill = get_fill();
+
+
+	//without debug on you can mess this up, safety checks are handled at that level by higher up
+	//processes
+	#if DEBUG_ASSERTS
+
+
+	assert(byte_assert_sorted(items, nitems));
+
+	assert(short_byte_assert_sorted(tags, fill));
+
+
+	#endif
+
+
+
+	//now that bounds are checked, setup for main insert
+
+	merge_dual_arrays_8_bit_64_bit(&tags[0], items, fill, nitems, teamID, warpID);
+
+
+	
+
+
+	if (warpID == 0) atomicAdd((unsigned int *) & md, nitems);
+
+
+
+	__syncwarp();
+
+
+	#if DEBUG_ASSERTS
+
+
+
+	if (!short_byte_assert_sorted(tags, fill+nitems)){
+
+		assert(short_byte_assert_sorted(tags, fill+nitems));
+
+	}
+
+
+	#endif
+
+	return;
+
+}
+
+
 
 //TODO: Patch this
 //BUlk Query can only find items that are < 32
@@ -424,5 +502,198 @@ __device__ bool atomic_block::assert_consistency(){
 
 
 
+
+//replace this with a recursive bitonic sort
+__device__ bool atomic_block::sort_block(int teamID, int warpID){
+
+
+	// int fill = get_fill();
+
+	// shortByteBitonicSort(tags, 0, fill, true, warpID);
+
+	// __syncwarp();
+
+	int fill = get_fill();
+
+	short_warp_sort(tags, fill, teamID, warpID);
+
+	//bubble_sort(tags, fill, warpID);
+
+
+	// while (true){
+
+
+	// 	bool sorted = false;
+
+	// 	//even transpositions
+	// 	for (int i = warpID*2+1; i < fill; i+=64){
+
+	// 		//swap warpID*2, warpID*2+1
+
+	// 		if ((tags[i-1] & 0xFF) > (tags[i] & 0xFF)){
+
+	// 			#if TAG_BITS == 8
+
+	// 			uint8_t temp_tag;
+
+	// 			#else
+
+	// 			uint16_t temp_tag;
+
+	// 			#endif
+
+	// 			temp_tag = tags[i-1];
+
+	// 			tags[i-1] = tags[i];
+
+	// 			tags[i] = temp_tag;
+
+	// 			sorted = true;
+
+	// 		}
+
+
+
+	// 	}
+
+
+	// 	//odd transpositions
+	// 	for (int i = warpID*2+2; i < fill; i+=64){
+
+	// 		//swap warpID*2, warpID*2+1
+
+	// 		if ((tags[i-1] & 0xFF) > (tags[i] & 0xFF)){
+
+	// 			#if TAG_BITS == 8
+
+	// 			uint8_t temp_tag;
+
+	// 			#else
+
+	// 			uint16_t temp_tag;
+
+	// 			#endif
+
+	// 			temp_tag = tags[i-1];
+
+	// 			tags[i-1] = tags[i];
+
+	// 			tags[i] = temp_tag;
+
+	// 			sorted = true;
+
+	// 		}
+
+
+
+	// 	}
+
+	// 	if (__ffs(__ballot_sync(0xffffffff, sorted)) == 0) return;
+
+
+	// }
+
+
+}
+
+
+//this is a check, no fancy schmancyness
+__device__ bool atomic_block::assert_sorted(int warpID){
+
+
+	int fill = get_fill();
+
+	return short_byte_assert_sorted(tags, fill);
+
+}
+
+
+
+//inner sorted join
+//assume both are prepped and sorted
+//ill fix the comparison shit later
+__device__ bool atomic_block::sorted_bulk_query(int warpID, uint64_t * items, bool * found, uint64_t nitems){
+
+
+	//byteBitonicSort(items, 0, nitems, true, warpID);
+
+
+	//big_bubble_sort(items, nitems, warpID);
+
+	assert(byte_assert_sorted(items, nitems));
+
+	//bitonicSort(uint64_t * items, int low, int count, bool dir, int warpID){
+
+	int fill = get_fill();
+
+	//bubble_sort(tags, fill, warpID);
+
+	__syncwarp();
+
+	assert(short_byte_assert_sorted(tags, fill));
+
+
+
+	int left = 0;
+	int right = 0;
+
+	while (true){
+
+		#if TAG_BITS == 8
+
+		uint8_t comp = items[left] & 0xFF;
+
+		#else
+
+		uint16_t comp = items[left] & 0xFFFF;
+
+		#endif
+
+		if (comp == tags[right]){
+
+			found[left] = true;
+			left++;
+
+			if (left >= nitems) return;
+
+
+		} else if (comp < tags[right]){
+
+			//left is a miss
+			found[left] = false;
+			left++;
+
+			if (left >= nitems) return;
+
+		} //else if (items[left] > tags[right])
+		else {
+
+			right++;
+
+			if (right >= fill){
+
+				//purge remaining 
+				for (int i = left; i < nitems; i++){
+
+					found[i] = false;
+
+				}
+
+				return;
+
+			}
+
+		
+
+		}
+
+
+
+
+	}
+
+
+
+} 
 
 #endif //atomic_block_CU

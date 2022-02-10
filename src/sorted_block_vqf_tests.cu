@@ -30,7 +30,7 @@
 #include <bitset>
 
 
-#include "include/atomic_vqf.cuh"
+#include "include/sorted_block_vqf.cuh"
 #include "include/metadata.cuh"
 
 #include <openssl/rand.h>
@@ -45,7 +45,7 @@ __host__ void insert_timing(optimized_vqf * my_vqf, uint64_t * vals, uint64_t nv
 	auto start = std::chrono::high_resolution_clock::now();
 
 
-	my_vqf->bulk_insert(vals, nvals, misses);
+	my_vqf->sorted_bulk_insert(vals, nvals, misses);
 	
 
 	cudaDeviceSynchronize();
@@ -447,7 +447,7 @@ int main(int argc, char** argv) {
 	
 	insert_timing(my_vqf, dev_vals, nitems,  misses);
 
-	cudaMemcpy(dev_vals, vals, nitems * sizeof(vals[0]), cudaMemcpyHostToDevice);
+	//cudaMemcpy(dev_vals, vals, nitems * sizeof(vals[0]), cudaMemcpyHostToDevice);
 
 	cudaDeviceSynchronize();
 
@@ -457,51 +457,57 @@ int main(int argc, char** argv) {
 
 	//query_timing(my_vqf, dev_vals, nitems,  misses);
 
-	cudaMemcpy(dev_vals, vals, nitems * sizeof(vals[0]), cudaMemcpyHostToDevice);
+    cudaMemcpy(dev_vals, vals, nitems * sizeof(vals[0]), cudaMemcpyHostToDevice);
 
-	full_query_timing(my_vqf, dev_vals, nitems, misses);
-
-	cudaDeviceSynchronize();
-
-
-	cudaMemcpy(dev_vals, vals, nitems * sizeof(vals[0]), cudaMemcpyHostToDevice);
-
-
-	bulk_query_timing(my_vqf, dev_vals, nitems, misses);
-
-	// cudaMemcpy(dev_vals, vals, nitems * sizeof(vals[0]), cudaMemcpyHostToDevice);
-
-	// cudaDeviceSynchronize();
-
-
-	//remove_timing(my_vqf, dev_vals, inserts, nitems,  misses);
-
-
-
-	cudaDeviceSynchronize();
-
-//	sort_timing(my_vqf);
+// 	full_query_timing(my_vqf, dev_vals, nitems, misses);
 
 	cudaDeviceSynchronize();
 
 
-	cudaMemcpy(dev_vals, vals, nitems * sizeof(vals[0]), cudaMemcpyHostToDevice);
+// 	cudaMemcpy(dev_vals, vals, nitems * sizeof(vals[0]), cudaMemcpyHostToDevice);
+
+
+	sorted_bulk_query_timing(my_vqf, dev_vals, nitems, misses);
 
 	cudaDeviceSynchronize();
-
-	bulk_query_timing(my_vqf, dev_vals, nitems, misses);
-
-	// cudaMemcpy(dev_vals, vals, nitems * sizeof(vals[0]), cudaMemcpyHostToDevice);
-
-	// cudaDeviceSynchronize();
+	
 
 
-	//remove_timing(my_vqf, dev_vals, inserts, nitems,  misses);
+// 	bulk_query_timing(my_vqf, dev_vals, nitems, misses);
 
-	cudaDeviceSynchronize();
-	//and insert
+// 	// cudaMemcpy(dev_vals, vals, nitems * sizeof(vals[0]), cudaMemcpyHostToDevice);
 
-	//auto end = std::chrono::high_resolution_clock::now();
+// 	// cudaDeviceSynchronize();
+
+
+// 	//remove_timing(my_vqf, dev_vals, inserts, nitems,  misses);
+
+
+
+// 	cudaDeviceSynchronize();
+
+// //	sort_timing(my_vqf);
+
+// 	cudaDeviceSynchronize();
+
+
+// 	cudaMemcpy(dev_vals, vals, nitems * sizeof(vals[0]), cudaMemcpyHostToDevice);
+
+// 	cudaDeviceSynchronize();
+
+// 	bulk_query_timing(my_vqf, dev_vals, nitems, misses);
+
+// 	// cudaMemcpy(dev_vals, vals, nitems * sizeof(vals[0]), cudaMemcpyHostToDevice);
+
+// 	// cudaDeviceSynchronize();
+
+
+// 	//remove_timing(my_vqf, dev_vals, inserts, nitems,  misses);
+
+// 	cudaDeviceSynchronize();
+// 	//and insert
+
+// 	//auto end = std::chrono::high_resolution_clock::now();
 
 
 	free(vals);

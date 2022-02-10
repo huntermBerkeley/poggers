@@ -1,13 +1,12 @@
-
-#ifndef ATOMIC_VQF_C
-#define ATOMIC_VQF_C
+#ifndef SORTED_BLOCK_VQF_C
+#define SORTED_BLOCK_VQF_C
 
 
 #include <cuda.h>
 #include <cuda_runtime_api.h>
 
 
-#include "include/atomic_vqf.cuh"
+#include "include/sorted_block_vqf.cuh"
 #include "include/atomic_block.cuh"
 #include "include/hashutil.cuh"
 #include "include/metadata.cuh"
@@ -207,12 +206,37 @@ __global__ void bulk_insert_kernel(optimized_vqf * vqf, uint64_t * misses){
 
 }
 
+//global call to create thread groups and trigger inserts;
+//this is done inside of block_vqf.cu so that cg only needs to be brought in once
+__global__ void sorted_bulk_insert_kernel(optimized_vqf * vqf, uint64_t * misses){
+
+	uint64_t tid = threadIdx.x + blockIdx.x*blockDim.x;
+
+
+	uint64_t teamID = tid / (BLOCK_SIZE);
+
+
+
+	//TODO double check me
+	if (teamID >= vqf->num_teams) return;
+
+
+	vqf->sorted_mini_filter_block(misses);
+
+	return;
+
+	
+
+
+}
+
 __global__ void bulk_query_kernel(optimized_vqf * vqf, uint64_t * items, bool * hits){
 
 
 	uint64_t tid = threadIdx.x + blockIdx.x*blockDim.x;
 
 	uint64_t teamID = tid / (BLOCK_SIZE);
+
 
 	if (teamID >= vqf->num_teams) return;
 
@@ -226,6 +250,12 @@ __global__ void bulk_sorted_query_kernel(optimized_vqf * vqf, uint64_t * items, 
 	uint64_t tid = threadIdx.x + blockIdx.x*blockDim.x;
 
 	uint64_t teamID = tid / (BLOCK_SIZE);
+
+	#if DEBUG_ASSERTS
+
+	assert(teamID == blockIdx.x);
+
+	#endif
 
 	if (teamID >= vqf->num_teams) return;
 
@@ -245,6 +275,23 @@ __host__ void optimized_vqf::bulk_insert(uint64_t * items, uint64_t nitems, uint
 	attach_buffers(items, nitems);
 
 	bulk_insert_kernel<<<num_teams, BLOCK_SIZE>>>(this, misses);
+
+
+
+}
+
+
+//attach buffers, create thread groups, and launch
+__host__ void optimized_vqf::sorted_bulk_insert(uint64_t * items, uint64_t nitems, uint64_t * misses){
+
+
+
+	uint64_t num_teams = get_num_teams();
+
+
+	attach_buffers(items, nitems);
+
+	sorted_bulk_insert_kernel<<<num_teams, BLOCK_SIZE>>>(this, misses);
 
 
 
@@ -295,14 +342,14 @@ __device__ bool optimized_vqf::mini_filter_bulk_queries(uint64_t * items, bool *
 	int threadID = threadIdx.x % 32;
 
 
-	if (blockID < num_teams) return;
+	if (blockID >= num_teams) return;
 
 
 
 	for (int i = warpID; i < BLOCKS_PER_THREAD_BLOCK; i+=WARPS_PER_BLOCK){
 
-		block.internal_blocks[i] = blocks[blockIdx.x].internal_blocks[i]; 
-
+		block.internal_blocks[i] = blocks[blockID].internal_blocks[i]; 
+		//printf("i: %d\n",i);
 		
 	}
 
@@ -406,6 +453,64 @@ __device__ bool optimized_vqf::mini_filter_block(uint64_t * misses){
    __syncthreads();
 
    	for (int i = warpID; i < BLOCKS_PER_THREAD_BLOCK; i+=WARPS_PER_BLOCK){
+
+	blocks[blockIdx.x].internal_blocks[i] = block.internal_blocks[i];
+
+	}
+
+}
+
+
+
+__device__ bool optimized_vqf::sorted_mini_filter_block(uint64_t * misses){
+
+	__shared__ thread_team_block block;
+
+
+	uint64_t tid = threadIdx.x + blockDim.x*blockIdx.x;
+
+	uint64_t blockID = blockIdx.x;
+
+	int warpID = threadIdx.x / 32;
+
+	int threadID = threadIdx.x % 32;
+
+	//each warp should grab one block
+	//TODO modify for #filter blocks per thread_team_block
+
+	for (int i = warpID; i < BLOCKS_PER_THREAD_BLOCK; i+=WARPS_PER_BLOCK){
+
+	block.internal_blocks[i] = blocks[blockIdx.x].internal_blocks[i];
+
+	sorted_insert_single_buffer_block(&block, blockID, i, warpID, threadID);
+
+
+	}
+
+
+	__syncthreads();
+
+
+	//TODO: reinstate this, preferably with more sorting
+	// for (int i = warpID; i < BLOCKS_PER_THREAD_BLOCK; i+=WARPS_PER_BLOCK){
+
+ //   	dump_remaining_buffers_block(&block, blockID, i, threadID, misses);
+
+ //   	}
+
+   __syncthreads();
+
+
+  //  for (int i = warpID; i < BLOCKS_PER_THREAD_BLOCK; i+=WARPS_PER_BLOCK){
+
+  //   //relock blocks so that consistency assertions pass
+  //  	block.internal_blocks[i].lock_local(threadID);
+ 
+ 	// }
+
+   __syncthreads();
+
+  for (int i = warpID; i < BLOCKS_PER_THREAD_BLOCK; i+=WARPS_PER_BLOCK){
 
 	blocks[blockIdx.x].internal_blocks[i] = block.internal_blocks[i];
 
@@ -555,6 +660,73 @@ __device__ bool optimized_vqf::insert_single_buffer_block(thread_team_block * lo
 	//modify to be warp group specific
 
 	local_blocks->internal_blocks[warpID].bulk_insert(threadID, buffers[global_buffer], count);
+
+	//local_blocks->internal_blocks[warpID].unlock(threadID);
+
+	//block.bulk_insert(warpGroup.thread_rank(), buffers[global_buffer], count);
+
+
+	//local_blocks->internal_blocks[buffer] = block;
+
+	if (threadID == 0){
+
+		buffers[global_buffer] += count;
+
+		buffer_sizes[global_buffer] -= count;
+	}
+
+}
+
+
+//dump up to FILL_CUTOFF into each block
+// this is handled at a per warp level, and this version does not rely on cooperative groups cause they slow down cudagdb
+__device__ bool optimized_vqf::sorted_insert_single_buffer_block(thread_team_block * local_blocks, uint64_t blockID, int warpID, int block_warpID, int threadID){
+
+
+
+	#if DEBUG_ASSERTS
+
+	assert(blockID  < num_teams);
+
+	assert( (blockID * BLOCKS_PER_THREAD_BLOCK + warpID) < num_blocks);
+	
+
+	#endif  
+
+	//at this point the team should be referring to a valid target for insertions
+	//this is a copy of buffer_insert modified to the use the cooperative group API
+	//for the original version check optimized_vqf.cu::buffer_insert
+
+	//local_blocks->internal_blocks[buffer];
+
+	uint64_t global_buffer = blockID*BLOCKS_PER_THREAD_BLOCK + warpID;
+
+
+	#if DEBUG_ASSERTS
+
+	assert(byte_assert_sorted(buffers[global_buffer], buffer_sizes[global_buffer]));
+
+	#endif
+
+
+
+	//TODO: chance FILL_CUTOFF to be a percentage fill ratio
+	int count = FILL_CUTOFF - local_blocks->internal_blocks[warpID].get_fill();
+
+	int buf_size = buffer_sizes[global_buffer];
+
+	if (buf_size < count) count = buf_size;
+
+
+	// if (warpGroup.thread_rank() != 0){
+	// 	printf("Halp: %d %d\n", warpGroup.thread_rank(), count);
+	// }
+
+	//modify to be warp group specific
+
+	//local_blocks->internal_blocks[warpID].bulk_insert(threadID, buffers[global_buffer], count);
+
+	local_blocks->internal_blocks[warpID].sorted_bulk_insert(buffers[global_buffer], count, block_warpID, threadID);
 
 	//local_blocks->internal_blocks[warpID].unlock(threadID);
 
@@ -1753,8 +1925,8 @@ __host__ uint64_t optimized_vqf::get_num_teams(){
 __host__ void optimized_vqf::attach_buffers(uint64_t * vals, uint64_t nvals){
 
 
-	//hash all key purge for pre-sorted lists
-	hash_all<<<(nvals - 1)/1024 + 1, 1024>>>(this, vals, vals, nvals);
+
+	hash_all_key_purge<<<(nvals - 1)/1024 + 1, 1024>>>(this, vals, vals, nvals);
 
 
 	thrust::sort(thrust::device, vals, vals+nvals);

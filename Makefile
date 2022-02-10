@@ -1,4 +1,4 @@
-TARGETS=atomic_tests
+TARGETS=sorted_block_vqf_tests
 
 
 ifdef D
@@ -126,7 +126,8 @@ shared_test:					$(OBJDIR)/shared_test.o
 atomic_tests:				$(OBJDIR)/atomic_tests.o \
 							$(OBJDIR)/atomic_vqf.o \
 							$(OBJDIR)/atomic_block.o \
-							$(OBJDIR)/hashutil.o
+							$(OBJDIR)/hashutil.o \
+							$(OBJDIR)/sorting_helper.o
 
 
 large_sort_tests:			$(OBJDIR)/large_sort_tests.o 
@@ -136,6 +137,17 @@ multi_vqf_tests: 			$(OBJDIR)/multi_vqf_tests.o \
 							$(OBJDIR)/atomic_vqf.o \
 							$(OBJDIR)/atomic_block.o \
 							$(OBJDIR)/hashutil.o
+
+
+sorting_tests:				$(OBJDIR)/sorting_tests.o \
+							$(OBJDIR)/sorting_helper.o
+
+
+sorted_block_vqf_tests:		$(OBJDIR)/sorted_block_vqf_tests.o \
+							$(OBJDIR)/sorted_block_vqf.o \
+							$(OBJDIR)/atomic_block.o \
+							$(OBJDIR)/hashutil.o \
+							$(OBJDIR)/sorting_helper.o
 
 
 # dependencies between .o files and .cc (or .c) files
@@ -158,6 +170,9 @@ $(OBJDIR)/block_vqf.o: $(LOC_SRC)/block_vqf.cu $(LOC_INCLUDE)/block_vqf.cuh $(LO
 $(OBJDIR)/atomic_block.o: $(LOC_SRC)/atomic_block.cu $(LOC_INCLUDE)/atomic_block.cuh $(LOC_INCLUDE)/metadata.cuh
 $(OBJDIR)/atomic_vqf.o: $(LOC_SRC)/atomic_vqf.cu $(LOC_INCLUDE)/atomic_vqf.cuh $(LOC_INCLUDE)/metadata.cuh
 $(OBJDIR)/multi_vqf_host.o: $(LOC_SRC)/multi_vqf_host.cu $(LOC_INCLUDE)/multi_vqf_host.cuh $(LOC_INCLUDE)/metadata.cuh 
+$(OBJDIR)/sorting_helper.o: $(LOC_SRC)/sorting_helper.cu $(LOC_INCLUDE)/sorting_helper.cuh
+$(OBJDIR)/atomic_vqf.o: $(LOC_SRC)/sorted_block_vqf.cu $(LOC_INCLUDE)/sorted_block_vqf.cuh $(LOC_INCLUDE)/metadata.cuh
+
 
 
 #

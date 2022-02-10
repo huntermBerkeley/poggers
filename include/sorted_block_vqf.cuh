@@ -1,5 +1,5 @@
-#ifndef ATOMIC_VQF_H
-#define ATOMIC_VQF_H
+#ifndef SORTED_BLOCK_VQF_H
+#define SORTED_BLOCK_VQF_H
 
 
 
@@ -48,14 +48,23 @@ typedef struct __attribute__ ((__packed__)) optimized_vqf {
 
 	__host__ void bulk_insert(uint64_t * items, uint64_t nitems, uint64_t * misses);
 
+
+	//insert while maintaining a sorted order inside of buckets
+	__host__ void sorted_bulk_insert(uint64_t * items, uint64_t nitems, uint64_t * misses);
+
 	
 	//block variants for debugging
 
 	__device__ bool mini_filter_block(uint64_t * misses);
 
+	__device__ bool sorted_mini_filter_block(uint64_t * misses);
+
 	__device__ void dump_remaining_buffers_block(thread_team_block * local_blocks, uint64_t blockID, int warpID, int threadID, uint64_t * misses);
 
     __device__ bool insert_single_buffer_block(thread_team_block * local_blocks, uint64_t blockID, int warpID, int threadID);
+
+
+    __device__ bool sorted_insert_single_buffer_block(thread_team_block * local_blocks, uint64_t blockID, int warpID, int block_warpID, int threadID);
 
 
 	__device__ bool query(int warpID, uint64_t key);
@@ -65,6 +74,7 @@ typedef struct __attribute__ ((__packed__)) optimized_vqf {
 
 	//__device__ bool remove(int warpID, uint64_t item);
 
+	//TODO: make this meaningfully distinct from the sorted variation - currently sorted
 	__host__ void attach_buffers(uint64_t * vals, uint64_t nvals);
 
 	//__global__ void set_buffers_binary(uint64_t num_keys, uint64_t * keys);
