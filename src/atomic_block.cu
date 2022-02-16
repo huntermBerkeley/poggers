@@ -385,7 +385,7 @@ __device__ void atomic_block::bulk_insert(int warpID, uint64_t * items, uint64_t
 }
 
 
-__device__ void atomic_block::sorted_bulk_insert(uint64_t * items, uint64_t nitems, int teamID, int warpID){
+__device__ void atomic_block::sorted_bulk_insert(uint8_t * temp_tags, uint64_t * items, uint64_t nitems, int teamID, int warpID){
 	
 
 	
@@ -412,7 +412,7 @@ __device__ void atomic_block::sorted_bulk_insert(uint64_t * items, uint64_t nite
 
 	//now that bounds are checked, setup for main insert
 
-	merge_dual_arrays_8_bit_64_bit(&tags[0], items, fill, nitems, teamID, warpID);
+	merge_dual_arrays_8_bit_64_bit(temp_tags, &tags[0], items, fill, nitems, teamID, warpID);
 
 
 	
@@ -439,6 +439,71 @@ __device__ void atomic_block::sorted_bulk_insert(uint64_t * items, uint64_t nite
 	#endif
 
 	return;
+
+}
+
+
+//a variant of the insert scheme that treats temp_tags as a local array, because it is
+//this is a workaround to redefining the shared memory structure of the entire project
+// while still maintaining minimal memory use
+__device__ void atomic_block::sorted_bulk_finish(uint8_t * temp_tags, uint8_t * items, uint64_t nitems, int teamID, int warpID){
+
+
+	int fill = get_fill();
+
+	#if DEBUG_ASSERTS
+
+	assert(short_byte_assert_sorted(items, nitems));
+
+	assert(short_byte_assert_sorted(tags, fill));
+
+
+	if (nitems + fill >= SLOTS_PER_BLOCK){
+
+		assert(nitems + fill <= SLOTS_PER_BLOCK);
+	}
+	
+
+
+	#endif
+
+
+	//now that bounds are checked, setup for main insert
+
+	//TODO fix merge_dual_arrays
+	merge_dual_arrays(temp_tags, &tags[0], items, fill, nitems, teamID, warpID);
+
+
+	
+
+
+	if (warpID == 0) atomicAdd((unsigned int *) & md, nitems);
+
+
+
+	__syncwarp();
+
+
+	#if DEBUG_ASSERTS
+
+
+
+	if (!short_byte_assert_sorted(tags, fill+nitems)){
+
+		assert(short_byte_assert_sorted(tags, fill+nitems));
+
+	}
+
+
+	#endif
+
+	return;
+
+
+
+
+
+
 
 }
 
@@ -695,5 +760,65 @@ __device__ bool atomic_block::sorted_bulk_query(int warpID, uint64_t * items, bo
 
 
 } 
+
+
+
+__device__ bool atomic_block::binary_search_query(uint64_t item){
+
+	int fill = get_fill();
+
+	#if DEBUG_ASSERTS
+
+	assert(short_byte_assert_sorted(tags, fill));
+
+	#endif
+
+
+	#if TAG_BITS == 8
+
+	uint8_t tag = item & 0xff;
+
+	#endif
+
+
+	int lower = 0;
+
+	int upper = fill;
+
+	int index;
+
+
+	while (upper != lower){
+
+		index = lower + (upper - lower)/2;
+
+
+		int query_item = tags[index];
+
+		if (query_item < tag){
+
+			lower = index+1;
+
+		} else if (query_item > tag){
+
+			upper = index;
+
+		} else {
+
+			return true;
+		}
+
+
+	}
+
+	if (lower < fill && tags[lower] == tag) return true;
+
+	return false;
+
+
+
+
+
+}
 
 #endif //atomic_block_CU

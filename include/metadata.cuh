@@ -11,7 +11,7 @@
 
 
 //number of warps launched per grid block
-#define WARPS_PER_BLOCK 32
+#define WARPS_PER_BLOCK 16
 #define BLOCK_SIZE (WARPS_PER_BLOCK * 32)
 
 #define BLOCKS_PER_THREAD_BLOCK 128
@@ -31,7 +31,7 @@
 
 #define TAG_BITS 8
 #define BYTES_PER_CACHE_LINE 128
-#define CACHE_LINES_PER_BLOCK 2
+#define CACHE_LINES_PER_BLOCK 1
 
 
 #endif

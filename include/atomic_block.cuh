@@ -97,12 +97,17 @@ typedef struct __attribute__ ((__packed__)) atomic_block {
 	__device__ bool assert_sorted(int warpID);
 
 
-	__device__ void sorted_bulk_insert(uint64_t * items, uint64_t nitems, int teamID, int warpID);
+	__device__ void sorted_bulk_insert(uint8_t * temp_tags, uint64_t * items, uint64_t nitems, int teamID, int warpID);
 
 
 	//internal join, requires both lists to be sorted
 	__device__ bool sorted_bulk_query(int warpID, uint64_t * items, bool * found, uint64_t nitems);
 	
+	__device__ void sorted_bulk_finish(uint8_t * temp_tags, uint8_t * items, uint64_t nitems, int teamID, int warpID);
+
+
+	__device__ bool binary_search_query(uint64_t item);
+
 
 } atomic_block;
 

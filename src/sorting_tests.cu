@@ -104,6 +104,15 @@ __global__ void merge_dual_arrays_kernel(uint8_t * primary, uint8_t * secondary,
 }
 
 
+__global__ void sorting_network_kernel(uint8_t * items, int nitems){
+
+	uint64_t tid = threadIdx.x + blockIdx.x*blockDim.x;
+
+
+	int warpID = tid % 32;
+
+	sorting_network_8_bit(items, nitems, warpID);
+}
 
 
 __host__ uint64_t * generate_data(uint64_t nitems){
@@ -135,6 +144,35 @@ __host__ uint64_t * generate_data(uint64_t nitems){
 	return vals;
 }
 
+
+__host__ uint8_t * generate_short_data(uint64_t nitems){
+
+
+	//malloc space
+
+	uint8_t * vals = (uint8_t *) malloc(nitems * sizeof(uint8_t));
+
+
+	//			   100,000,000
+	uint64_t cap = 100000000ULL;
+
+	for (uint64_t to_fill = 0; to_fill < nitems; to_fill+=0){
+
+		uint64_t togen = (nitems - to_fill > cap) ? cap : nitems - to_fill;
+
+
+		RAND_bytes((unsigned char *) (vals + to_fill), togen * sizeof(uint8_t));
+
+
+
+		to_fill += togen;
+
+		//printf("Generated %llu/%llu\n", to_fill, nitems);
+
+	}
+
+	return vals;
+}
 
 
 int main(int argc, char** argv) {
@@ -256,6 +294,71 @@ int main(int argc, char** argv) {
 	assert(short_byte_assert_sorted(primary, 8));
 
 	cudaDeviceSynchronize();
+
+
+
+	primary[0] = 1;
+	primary[1] = 0;
+
+
+	cudaDeviceSynchronize();
+
+	sorting_network_kernel<<<1,32>>>(primary,2);
+
+	cudaDeviceSynchronize();
+
+	assert(short_byte_assert_sorted(primary, 2));
+
+	cudaDeviceSynchronize();
+
+
+
+	primary[0] = 5;
+	primary[1] = 2;
+
+	primary[2] = 1;
+
+	primary[3] = 4;
+
+
+
+	cudaDeviceSynchronize();
+
+	sorting_network_kernel<<<1,32>>>(primary,4);
+
+	cudaDeviceSynchronize();
+
+	assert(short_byte_assert_sorted(primary, 4));
+
+	cudaDeviceSynchronize();
+
+
+	uint8_t * temp_items;
+
+	cudaMallocManaged((void **)& temp_items, sizeof(uint8_t)*32);
+
+	for (int i =0; i <200; i++){
+
+
+		uint8_t * host_temp_items = generate_short_data(32);
+
+		cudaMemcpy(temp_items, host_temp_items, sizeof(uint8_t)*32, cudaMemcpyHostToDevice);
+
+		free(host_temp_items);
+
+		cudaDeviceSynchronize();
+
+		sorting_network_kernel<<<1,32>>>(temp_items, 32);
+
+		cudaDeviceSynchronize();
+
+		assert(short_byte_assert_sorted(temp_items, 32));
+
+		cudaDeviceSynchronize();
+
+
+	}
+	
 
 
 

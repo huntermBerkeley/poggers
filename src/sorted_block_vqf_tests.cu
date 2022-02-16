@@ -380,7 +380,7 @@ int main(int argc, char** argv) {
 	uint64_t nbits = atoi(argv[1]);
 
 
-	uint64_t nitems = (1ULL << nbits) * .9;
+	uint64_t nitems = (1ULL << nbits) * .85;
 
 	uint64_t * vals;
 	uint64_t * dev_vals;
@@ -472,6 +472,16 @@ int main(int argc, char** argv) {
 	cudaDeviceSynchronize();
 	
 
+
+	my_vqf->get_average_fill_block();
+
+	cudaDeviceSynchronize();
+
+
+	my_vqf->get_average_fill_team();
+
+
+	cudaDeviceSynchronize();
 
 // 	bulk_query_timing(my_vqf, dev_vals, nitems, misses);
 

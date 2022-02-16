@@ -64,9 +64,6 @@ typedef struct __attribute__ ((__packed__)) optimized_vqf {
     __device__ bool insert_single_buffer_block(thread_team_block * local_blocks, uint64_t blockID, int warpID, int threadID);
 
 
-    __device__ bool sorted_insert_single_buffer_block(thread_team_block * local_blocks, uint64_t blockID, int warpID, int block_warpID, int threadID);
-
-
 	__device__ bool query(int warpID, uint64_t key);
 
 	//query but we check both spots - slower
@@ -123,6 +120,15 @@ typedef struct __attribute__ ((__packed__)) optimized_vqf {
 	__host__ void sorted_bulk_query(uint64_t * items, uint64_t nitems, bool * hits);
 
 
+	__device__ bool sorted_insert_single_buffer_block(thread_team_block * local_blocks, uint8_t * temp_tags, uint64_t blockID, int warpID, int block_warpID, int threadID);
+
+	__device__ void dump_remaining_buffers_sorted(thread_team_block * local_blocks, uint8_t * temp_tags, uint64_t blockID, int warpID, int threadID, uint64_t * misses);
+
+
+	//internal descriptions
+	__host__ void get_average_fill_block();
+
+	__host__ void get_average_fill_team();
 
 } optimized_vqf;
 

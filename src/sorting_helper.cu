@@ -394,7 +394,7 @@ __device__ void bubble_sort(uint8_t * tags, int fill, int warpID){
 }
 
 
-__device__ void merge_dual_arrays(uint8_t * primary, uint8_t * secondary, int primary_nitems, int secondary_nitems, int teamID, int warpID){
+__device__ void merge_dual_arrays(uint8_t * temp_tags, uint8_t * primary, uint8_t * secondary, int primary_nitems, int secondary_nitems, int teamID, int warpID){
 
 
 
@@ -422,6 +422,63 @@ __device__ void merge_dual_arrays(uint8_t * primary, uint8_t * secondary, int pr
 
 	__syncwarp();
 
+
+	//approach 3 - binary search for start
+
+	/*
+	// int cutoff = dividing_line*warpID; 
+
+	// int lower = 0;
+
+	// int upper = primary_nitems ;
+
+
+	//approach 2 - partition evenly across
+	*/
+
+
+
+	//this is overall faster
+	//but a binary partition would be even nicer
+
+	int start = warpID*primary_nitems/32;
+
+	int end = (warpID+1)*primary_nitems/32;
+
+	if (warpID == 31) end = primary_nitems;
+
+
+	for (int i = start; i < end; i++){
+
+		int index = primary[i] / dividing_line;
+
+		atomicAdd(& primary_counters[teamID*32 + index], 1);
+
+
+	}
+
+	start = warpID*secondary_nitems/32;
+
+	end = (warpID+1)*secondary_nitems/32;
+
+	if (warpID == 31) end = secondary_nitems;
+
+
+	for (int i = start; i < end; i++){
+
+		int index = secondary[i] / dividing_line;
+
+		atomicAdd(& secondary_counters[teamID*32 + index], 1);
+
+
+	}
+
+	
+
+
+	//primary pipeline - add in a row - this condenses adds to the same address
+	/*
+
 	for (int i = warpID; i < primary_nitems; i+=32){
 
 		int index = primary[i] / dividing_line;
@@ -440,6 +497,8 @@ __device__ void merge_dual_arrays(uint8_t * primary, uint8_t * secondary, int pr
 
 
 	}
+
+	*/
 
 	__syncwarp();
 
@@ -539,14 +598,15 @@ __device__ void merge_dual_arrays(uint8_t * primary, uint8_t * secondary, int pr
 
 	//need reserved space for entire call - should be nitems?
 
-	uint8_t * temp_tags = (uint8_t *) malloc(sizeof(uint8_t)*primary_length);
+	//uint8_t * temp_tags = (uint8_t *) malloc(sizeof(uint8_t)*primary_length);
 
 
-	for (int i = 0; i < primary_length; i++){
+	for (int i = primary_start; i < primary_start+primary_length; i++){
 
-		temp_tags[i] = primary[primary_start+i];
+		temp_tags[i] = primary[i];
 
 	}
+
 
 	//next steps don't need to sync, we can proceed as fast as posssible
 	//each thread is independent - may smooth out memload issues
@@ -559,11 +619,11 @@ __device__ void merge_dual_arrays(uint8_t * primary, uint8_t * secondary, int pr
 
 	//now to zip from primary[merged_start] -> merged_length
 
-	primary_start = 0;
+	int primary_end = primary_start + primary_length;
 
 	int secondary_end = secondary_start + secondary_length;
 
-	while (primary_start < primary_length && secondary_start < secondary_end){
+	while (primary_start < primary_end && secondary_start < secondary_end){
 
 
 		if (temp_tags[primary_start] < secondary[secondary_start]){
@@ -585,7 +645,7 @@ __device__ void merge_dual_arrays(uint8_t * primary, uint8_t * secondary, int pr
 
 	}
 
-	for (int i = primary_start; i < primary_length; i++){
+	for (int i = primary_start; i < primary_end; i++){
 
 		primary[merged_start] = temp_tags[i];
 		merged_start++;
@@ -601,13 +661,13 @@ __device__ void merge_dual_arrays(uint8_t * primary, uint8_t * secondary, int pr
 
 	__syncwarp();
 
-	free(temp_tags);
+	//free(temp_tags);
 
 
 }
 
 
-__device__ void merge_dual_arrays_8_bit_64_bit(uint8_t * primary, uint64_t * secondary, int primary_nitems, int secondary_nitems, int teamID, int warpID){
+__device__ void merge_dual_arrays_8_bit_64_bit(uint8_t * temp_tags, uint8_t * primary, uint64_t * secondary, int primary_nitems, int secondary_nitems, int teamID, int warpID){
 
 
 
@@ -625,6 +685,12 @@ __device__ void merge_dual_arrays_8_bit_64_bit(uint8_t * primary, uint64_t * sec
 	__shared__ int secondary_counters [WARPS_PER_BLOCK*32];
 
 	__shared__ int merged_counters[WARPS_PER_BLOCK*32];
+
+	// #if TAG_BITS == 8
+
+	// //__shared__ uint8_t temp_tags[WARPS_PER_BLOCK*128];
+
+	// #endif
 
 
 	#if DEBUG_ASSERTS
@@ -767,16 +833,24 @@ __device__ void merge_dual_arrays_8_bit_64_bit(uint8_t * primary, uint64_t * sec
 	int merged_start = merged_counters[teamID*32+warpID];
 
 
+
+	
+
 	//need reserved space for entire call - should be nitems?
 
-	uint8_t * temp_tags = (uint8_t *) malloc(sizeof(uint8_t)*primary_length);
 
 
-	for (int i = 0; i < primary_length; i++){
+	//uint8_t * temp_tags = (uint8_t *) malloc(sizeof(uint8_t)*primary_length);
 
-		temp_tags[i] = primary[primary_start+i];
+	
+
+	for (int i = primary_start; i < primary_start+primary_length; i++){
+
+		temp_tags[i] = primary[i];
 
 	}
+
+
 
 	//next steps don't need to sync, we can proceed as fast as posssible
 	//each thread is independent - may smooth out memload issues
@@ -789,11 +863,11 @@ __device__ void merge_dual_arrays_8_bit_64_bit(uint8_t * primary, uint64_t * sec
 
 	//now to zip from primary[merged_start] -> merged_length
 
-	primary_start = 0;
+	int primary_end = primary_start + primary_length;
 
 	int secondary_end = secondary_start + secondary_length;
 
-	while (primary_start < primary_length && secondary_start < secondary_end){
+	while (primary_start < primary_end && secondary_start < secondary_end){
 
 
 		if (temp_tags[primary_start] < secondary[secondary_start]){
@@ -815,7 +889,7 @@ __device__ void merge_dual_arrays_8_bit_64_bit(uint8_t * primary, uint64_t * sec
 
 	}
 
-	for (int i = primary_start; i < primary_length; i++){
+	for (int i = primary_start; i < primary_end; i++){
 
 		primary[merged_start] = temp_tags[i];
 		merged_start++;
@@ -831,7 +905,11 @@ __device__ void merge_dual_arrays_8_bit_64_bit(uint8_t * primary, uint64_t * sec
 
 	__syncwarp();
 
-	free(temp_tags);
+	
+
+
+
+	//free(temp_tags);
 
 
 }
@@ -1001,6 +1079,170 @@ __device__ void short_warp_sort(uint8_t * items, int nitems, int teamID, int war
 
 		
 
+
+
+
+
+}
+
+//handled by one thread atm
+__device__ void insertion_sort_max(uint8_t * items, int nitems){
+
+
+	for (int i = nitems-1; i >= 32; i--){
+
+		uint8_t max = 0;
+
+		int max_index = 0;
+
+		//loop through all items beow the established index
+		for (int j=0; j <= i; j++){
+
+
+			if (items[j] > max){
+
+				max = items[j];
+
+				max_index = j;
+			}
+
+
+		}
+
+
+		//swap i and max_index
+
+		//max is already set to items[j], save a cycle
+		items[max_index] = items[i];
+		items[i] = max;
+
+
+
+
+
+	}
+
+
+
+}
+
+
+__device__ void sorting_network_8_bit(uint8_t * items, int nitems, int warpID){
+
+
+	//this implementation uses batcher odd-even mergesort
+
+
+	//implementation 2 - massively parallel radix sort
+
+	uint8_t * main_buffer = items;
+
+	uint8_t * alt_buffer = items + 64;
+
+
+	//calculate bit
+	for (int mask_bit = 0; mask_bit < 8; mask_bit++){
+
+		uint8_t mask = 1 << mask_bit;
+
+
+		bool my_bit = false;
+
+
+		if (warpID < nitems){
+
+			my_bit = items[warpID] & mask;
+		}
+
+
+
+		
+
+
+		//and ballot synch on this bit
+		unsigned int result = __ballot_sync(0xffffffff, my_bit);
+
+		//histogram
+
+		//TODO: double check me - this "histogram" calc should prevent incorrect items from summing
+
+		//int num_ones = __popc(result);
+
+		int num_zeros = nitems - __popc(result);
+
+
+		//prefix sum of zeros
+
+		int zero_sum = !my_bit;
+
+
+
+		for (int i =1; i<=16; i*=2){
+
+			int n = __shfl_up_sync(0xffffffff, zero_sum, i, 32);
+
+			if ((warpID) >= i) zero_sum +=n;
+
+		}
+
+		//subtracting read gives us an initial start
+		zero_sum = zero_sum - !my_bit;
+
+
+
+		int one_sum = my_bit;
+
+		for (int i =1; i<=16; i*=2){
+
+			int n = __shfl_up_sync(0xffffffff, one_sum, i, 32);
+
+			if ((warpID) >= i) one_sum +=n;
+
+		}
+
+		//subtracting read gives us an initial start
+		one_sum = one_sum - my_bit;
+
+
+		//__syncwarp();
+
+		uint8_t my_item = items[warpID];
+
+		__syncwarp();
+
+		if (warpID < nitems){
+
+				
+
+			//if one bit(num_zeros + one_sum);
+			//if zero !bit(zero_sum)
+
+			int write_index = zero_sum;
+
+			if (my_bit){
+
+				write_index = num_zeros+one_sum;
+
+			}
+
+
+			items[ write_index ] = my_item;
+
+
+		}
+
+		__syncwarp();
+
+
+		my_bit = items[warpID] & mask;
+		//and ballot synch on this bit
+		result = __ballot_sync(0xffffffff, my_bit);
+
+		__syncwarp();
+
+
+
+	}
 
 
 

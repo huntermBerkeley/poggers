@@ -39,9 +39,15 @@ __device__ void big_bubble_sort(uint64_t * tags, int fill, int warpID);
 
 __device__ void short_warp_sort(uint8_t * items, int nitems, int teamID, int warpID);
 
-__device__ void merge_dual_arrays(uint8_t * primary, uint8_t * secondary, int primary_nitems, int secondary_nitems, int teamID, int warpID);
+__device__ void merge_dual_arrays(uint8_t * temp_tags, uint8_t * primary, uint8_t * secondary, int primary_nitems, int secondary_nitems, int teamID, int warpID);
 
-__device__ void merge_dual_arrays_8_bit_64_bit(uint8_t * primary, uint64_t * secondary, int primary_nitems, int secondary_nitems, int teamID, int warpID);
+__device__ void merge_dual_arrays_8_bit_64_bit(uint8_t * temp_tags, uint8_t * primary, uint64_t * secondary, int primary_nitems, int secondary_nitems, int teamID, int warpID);
+
+__device__ void insertion_sort_max(uint8_t * items, int nitems);
+
+
+__device__ void sorting_network_8_bit(uint8_t * items, int nitems, int warpID);
+
 
 
 
