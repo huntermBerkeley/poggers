@@ -120,15 +120,50 @@ typedef struct __attribute__ ((__packed__)) optimized_vqf {
 	__host__ void sorted_bulk_query(uint64_t * items, uint64_t nitems, bool * hits);
 
 
-	__device__ bool sorted_insert_single_buffer_block(thread_team_block * local_blocks, uint8_t * temp_tags, uint64_t blockID, int warpID, int block_warpID, int threadID);
+	//sliced inserts for timing
+	__host__ void sorted_bulk_insert_buffers_preattached(uint64_t * misses);
 
-	__device__ void dump_remaining_buffers_sorted(thread_team_block * local_blocks, uint8_t * temp_tags, uint64_t blockID, int warpID, int threadID, uint64_t * misses);
+
+	//functions for working on the single write variant
+	__device__ bool buffer_get_primary_count(thread_team_block * local_blocks, int * counters, uint64_t blockID, int warpID, int block_warpID, int threadID);
+
+
+
+	//extra stuff for async write
+	__device__ bool sorted_mini_filter_block_async_write(uint64_t * misses);
+
+	//__device__ bool buffer_get_primary_count(thread_team_block * local_blocks, int * counters, uint64_t blockID, int warpID, int block_warpID, int threadID);
+
+
+	__device__ void dump_all_buffers_sorted(thread_team_block * local_blocks, int * offsets, int * counters, uint64_t blockID, int warpID, int threadID, uint64_t * misses);
+
+
+	__device__ bool query_single_item_sorted_debug(int warpID, uint64_t hash);
 
 
 	//internal descriptions
 	__host__ void get_average_fill_block();
 
 	__host__ void get_average_fill_team();
+
+
+
+	#if TAG_BITS == 8
+
+		__device__ bool sorted_insert_single_buffer_block(thread_team_block * local_blocks, uint8_t * temp_tags, uint64_t blockID, int warpID, int block_warpID, int threadID);
+
+		__device__ void dump_remaining_buffers_sorted(thread_team_block * local_blocks, uint8_t * temp_tags, uint64_t blockID, int warpID, int threadID, uint64_t * misses);
+
+
+
+	#elif TAG_BITS == 16
+
+		__device__ bool sorted_insert_single_buffer_block(thread_team_block * local_blocks, uint16_t * temp_tags, uint64_t blockID, int warpID, int block_warpID, int threadID);
+
+		__device__ void dump_remaining_buffers_sorted(thread_team_block * local_blocks, uint16_t * temp_tags, uint64_t blockID, int warpID, int threadID, uint64_t * misses);
+
+
+	#endif
 
 } optimized_vqf;
 

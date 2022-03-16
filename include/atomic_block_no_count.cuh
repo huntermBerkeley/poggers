@@ -1,5 +1,5 @@
-#ifndef _ATOMIC_BLOCK_H 
-#define _ATOMIC_BLOCK_H
+#ifndef _ATOMIC_BLOCK_NO_COUNT_H 
+#define _ATOMIC_BLOCK_NO_COUNT_H
 
 
 #include <cuda.h>
@@ -7,7 +7,7 @@
 #include "include/metadata.cuh"
 
 
-#define BYTES_AVAILABLE (BYTES_PER_CACHE_LINE * CACHE_LINES_PER_BLOCK - sizeof(unsigned int))
+#define BYTES_AVAILABLE (BYTES_PER_CACHE_LINE * CACHE_LINES_PER_BLOCK)
 
 //the best performance comes with block dumps that are very large
 //so these blocks can be configured to allow for much larger inserts
@@ -44,7 +44,7 @@ typedef struct __attribute__ ((__packed__)) atomic_block {
 	//tag bits change based on the #of bytes allocated per block
 
 
-	unsigned int md;
+	//unsigned int md;
 
 
 
@@ -62,41 +62,8 @@ typedef struct __attribute__ ((__packed__)) atomic_block {
 	__device__ void setup();
 
 
-	__device__ int get_fill();
-
-
-	__device__ int max_capacity();
-
-
-
-	//use a failed CAS to get a better estimate
-	__device__ int get_fill_atomic();
-
-
-
-	__device__ bool insert_one_thread(uint64_t item);
-
-	__device__ void insert(int warpID, uint64_t item);
-
-	__device__ bool query(int warpID, uint64_t item);
-
-	__device__ void bulk_insert(int warpID, uint64_t * items, uint64_t nitems);
-
-    __device__ int bulk_query(int warpID, uint64_t * items, uint64_t nitems);
-
 
     //remove specific code
-
-    __device__ bool remove(int warpID, uint64_t item);
-    __device__ bool purge_tombstone(int warpID);
-
-    __device__ bool sort_block(int teamID, int warpID);
-
-	__device__ bool assert_consistency();
-
-	__device__ bool assert_sorted(int warpID);
-
-
 
 
 	//internal join, requires both lists to be sorted

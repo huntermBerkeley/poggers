@@ -221,7 +221,10 @@ __global__ void sorted_bulk_insert_kernel(optimized_vqf * vqf, uint64_t * misses
 	if (teamID >= vqf->num_teams) return;
 
 
-	vqf->sorted_mini_filter_block(misses);
+	//vqf->sorted_mini_filter_block(misses);
+
+	vqf->sorted_mini_filter_block_async_write(misses);
+
 
 	return;
 
@@ -298,6 +301,15 @@ __host__ void optimized_vqf::sorted_bulk_insert(uint64_t * items, uint64_t nitem
 }
 
 
+__host__ void optimized_vqf::sorted_bulk_insert_buffers_preattached(uint64_t * misses){
+
+
+	uint64_t num_teams = get_num_teams();
+
+	sorted_bulk_insert_kernel<<<num_teams, BLOCK_SIZE>>>(this, misses);
+
+}
+
 
 //speed up queries by sorting to minimize memory movements required.
 // This will sort the query list but won't mutate the items themselves
@@ -342,7 +354,7 @@ __device__ bool optimized_vqf::mini_filter_bulk_queries(uint64_t * items, bool *
 	int threadID = threadIdx.x % 32;
 
 
-	if (blockID >= num_teams) return;
+	if (blockID >= num_teams) return false;
 
 
 
@@ -396,6 +408,8 @@ __device__ bool optimized_vqf::mini_filter_bulk_queries(uint64_t * items, bool *
 
 		}
 	}
+
+	return true;
 
 }
 
@@ -484,6 +498,8 @@ __device__ bool optimized_vqf::mini_filter_block(uint64_t * misses){
 
 	}
 
+	return true;
+
 }
 
 
@@ -492,7 +508,17 @@ __device__ bool optimized_vqf::sorted_mini_filter_block(uint64_t * misses){
 
 	__shared__ thread_team_block block;
 
+
+	#if TAG_BITS == 8
+
 	__shared__ uint8_t temp_tags[BLOCKS_PER_THREAD_BLOCK*SLOTS_PER_BLOCK];
+
+
+	#elif TAG_BITS == 16
+
+	__shared__ uint16_t temp_tags[BLOCKS_PER_THREAD_BLOCK*SLOTS_PER_BLOCK];
+
+	#endif
 
 
 	uint64_t tid = threadIdx.x + blockDim.x*blockIdx.x;
@@ -508,12 +534,31 @@ __device__ bool optimized_vqf::sorted_mini_filter_block(uint64_t * misses){
 
 	for (int i = warpID; i < BLOCKS_PER_THREAD_BLOCK; i+=WARPS_PER_BLOCK){
 
+
+	//speed this up - should be .5-4 memory operations?
+	//change this to look through uint64_T to load
+
+
 	block.internal_blocks[i] = blocks[blockIdx.x].internal_blocks[i];
 
-	sorted_insert_single_buffer_block(&block, (uint8_t *) &temp_tags, blockID, i, warpID, threadID);
+
+	#if TAG_BITS == 8
+
+		sorted_insert_single_buffer_block(&block, (uint8_t *) &temp_tags, blockID, i, warpID, threadID);
+
+	#elif TAG_BITS == 16
+
+		sorted_insert_single_buffer_block(&block, (uint16_t *) &temp_tags, blockID, i, warpID, threadID);
+
+	#endif
+
+	//sorted_insert_single_buffer_block(&block, (uint8_t *) &temp_tags, blockID, i, warpID, threadID);
 
 
 	}
+
+
+	//return;
 
 
 	__syncthreads();
@@ -526,7 +571,17 @@ __device__ bool optimized_vqf::sorted_mini_filter_block(uint64_t * misses){
 
 	//this loop needs to be moved internally for the sorted version
 
-  dump_remaining_buffers_sorted(&block, (uint8_t *) &temp_tags, blockID, warpID, threadID, misses);
+	#if TAG_BITS == 8
+
+	  	dump_remaining_buffers_sorted(&block, (uint8_t *) &temp_tags, blockID, warpID, threadID, misses);
+
+	#elif TAG_BITS == 16
+
+  	 	dump_remaining_buffers_sorted(&block, (uint16_t *) &temp_tags, blockID, warpID, threadID, misses);
+
+	#endif
+
+
 
 
    __syncthreads();
@@ -546,6 +601,147 @@ __device__ bool optimized_vqf::sorted_mini_filter_block(uint64_t * misses){
 	blocks[blockIdx.x].internal_blocks[i] = block.internal_blocks[i];
 
 	}
+
+
+
+}
+
+
+
+//avoid extra temp tags via writing directly to the block?
+__device__ bool optimized_vqf::sorted_mini_filter_block_async_write(uint64_t * misses){
+
+	__shared__ thread_team_block block;
+
+
+	#if TAG_BITS == 8
+
+	//__shared__ uint8_t temp_tags[BLOCKS_PER_THREAD_BLOCK*SLOTS_PER_BLOCK];
+
+
+	#elif TAG_BITS == 16
+
+	//__shared__ uint16_t temp_tags[BLOCKS_PER_THREAD_BLOCK*SLOTS_PER_BLOCK];
+
+
+
+
+	#endif
+
+
+	//counters required
+	//global offset
+	//#elements dumped in round 1
+	//fill within block
+	//length from fill
+	__shared__ int offsets[BLOCKS_PER_THREAD_BLOCK];
+
+
+	__shared__ int counters[BLOCKS_PER_THREAD_BLOCK];
+
+
+	uint64_t tid = threadIdx.x + blockDim.x*blockIdx.x;
+
+	uint64_t blockID = blockIdx.x;
+
+	int warpID = threadIdx.x / 32;
+
+	int threadID = threadIdx.x % 32;
+
+	//each warp should grab one block
+	//TODO modify for #filter blocks per thread_team_block
+
+	for (int i = warpID; i < BLOCKS_PER_THREAD_BLOCK; i+=WARPS_PER_BLOCK){
+
+
+	//speed this up - should be .5-4 memory operations?
+	//change this to look through uint64_T to load
+
+
+	//funky load
+
+	//load size of 4 bytes - 128 / 32
+
+	#ifndef TOTAL_INTS
+	#define TOTAL_INTS BYTES_PER_CACHE_LINE * CACHE_LINES_PER_BLOCK / 4
+	#endif
+
+
+	for (int j = threadID; j < TOTAL_INTS; j+=32){
+
+		((int *)(&block.internal_blocks[i]))[j] = ((int *)(&blocks[blockIdx.x].internal_blocks[i]))[j];
+
+	}
+
+	//block.internal_blocks[i] = blocks[blockIdx.x].internal_blocks[i];
+
+
+
+
+	buffer_get_primary_count(&block, (int *) &offsets[0], blockID, i, warpID, threadID);
+
+
+
+	//sorted_insert_single_buffer_block(&block, (uint8_t *) &temp_tags, blockID, i, warpID, threadID);
+
+
+	}
+
+
+	//return;
+
+
+	__syncthreads();
+
+
+	//at this point the block is loaded and offsets contain the pieces of global buffers to be dumped
+	//dump remaining buffers seems to need a temp array :/
+	//I don't think theres a way to get around that unfortunately
+	//it wastes space at the end of every buffer passed in but it can't be avoided.
+
+
+	//
+
+
+
+	//TODO: reinstate this, preferably with more sorting
+
+
+	//this loop needs to be moved internally for the sorted version
+
+	// #if TAG_BITS == 8
+
+	//   	dump_remaining_buffers_sorted(&block, (uint8_t *) &temp_tags, blockID, warpID, threadID, misses);
+
+	// #elif TAG_BITS == 16
+
+ //  	 	dump_remaining_buffers_sorted(&block, (uint16_t *) &temp_tags, blockID, warpID, threadID, misses);
+
+	// #endif
+
+
+	dump_all_buffers_sorted(&block, &offsets[0], &counters[0], blockID, warpID, threadID, misses);
+
+
+   __syncthreads();
+
+
+  //  for (int i = warpID; i < BLOCKS_PER_THREAD_BLOCK; i+=WARPS_PER_BLOCK){
+
+  //   //relock blocks so that consistency assertions pass
+  //  	block.internal_blocks[i].lock_local(threadID);
+ 
+ 	// }
+
+  // __syncthreads();
+
+ //  for (int i = warpID; i < BLOCKS_PER_THREAD_BLOCK; i+=WARPS_PER_BLOCK){
+
+	// blocks[blockIdx.x].internal_blocks[i] = block.internal_blocks[i];
+
+	// }
+
+
 
 }
 
@@ -711,7 +907,18 @@ __device__ bool optimized_vqf::insert_single_buffer_block(thread_team_block * lo
 
 //dump up to FILL_CUTOFF into each block
 // this is handled at a per warp level, and this version does not rely on cooperative groups cause they slow down cudagdb
-__device__ bool optimized_vqf::sorted_insert_single_buffer_block(thread_team_block * local_blocks, uint8_t * temp_tags, uint64_t blockID, int warpID, int block_warpID, int threadID){
+
+#if TAG_BITS == 8
+	
+	__device__ bool optimized_vqf::sorted_insert_single_buffer_block(thread_team_block * local_blocks, uint8_t * temp_tags, uint64_t blockID, int warpID, int block_warpID, int threadID)
+
+#elif TAG_BITS == 16
+
+	__device__ bool optimized_vqf::sorted_insert_single_buffer_block(thread_team_block * local_blocks, uint16_t * temp_tags, uint64_t blockID, int warpID, int block_warpID, int threadID)
+
+#endif
+
+	{
 
 
 
@@ -735,7 +942,19 @@ __device__ bool optimized_vqf::sorted_insert_single_buffer_block(thread_team_blo
 
 	#if DEBUG_ASSERTS
 
-	assert(byte_assert_sorted(buffers[global_buffer], buffer_sizes[global_buffer]));
+
+
+		#if TAG_BITS == 8
+
+			assert(byte_assert_sorted(buffers[global_buffer], buffer_sizes[global_buffer]));
+
+		#elif TAG_BITS == 16
+
+			assert(two_byte_assert_sorted(buffers[global_buffer], buffer_sizes[global_buffer]));
+
+		#endif
+
+	
 
 	#endif
 
@@ -748,6 +967,13 @@ __device__ bool optimized_vqf::sorted_insert_single_buffer_block(thread_team_blo
 
 	if (buf_size < count) count = buf_size;
 
+	if (count < 0) count = 0;
+
+	#if DEBUG_ASSERTS
+
+	assert(count < SLOTS_PER_BLOCK);
+
+	#endif
 
 	// if (warpGroup.thread_rank() != 0){
 	// 	printf("Halp: %d %d\n", warpGroup.thread_rank(), count);
@@ -779,11 +1005,121 @@ __device__ bool optimized_vqf::sorted_insert_single_buffer_block(thread_team_blo
 }
 
 
+//dump up to FILL_CUTOFF into each block
+// this is handled at a per warp level, and this version does not rely on cooperative groups cause they slow down cudagdb
+
+
+__device__ bool optimized_vqf::buffer_get_primary_count(thread_team_block * local_blocks, int * counters, uint64_t blockID, int warpID, int block_warpID, int threadID){
+
+
+
+	#if DEBUG_ASSERTS
+
+	assert(blockID  < num_teams);
+
+	assert( (blockID * BLOCKS_PER_THREAD_BLOCK + warpID) < num_blocks);
+	
+
+	#endif  
+
+	//at this point the team should be referring to a valid target for insertions
+	//this is a copy of buffer_insert modified to the use the cooperative group API
+	//for the original version check optimized_vqf.cu::buffer_insert
+
+	//local_blocks->internal_blocks[buffer];
+
+	uint64_t global_buffer = blockID*BLOCKS_PER_THREAD_BLOCK + warpID;
+
+
+	#if DEBUG_ASSERTS
+
+
+
+		#if TAG_BITS == 8
+
+			assert(byte_assert_sorted(buffers[global_buffer], buffer_sizes[global_buffer]));
+
+		#elif TAG_BITS == 16
+
+			assert(two_byte_assert_sorted(buffers[global_buffer], buffer_sizes[global_buffer]));
+
+		#endif
+
+	
+
+	#endif
+
+
+
+	//TODO: chance FILL_CUTOFF to be a percentage fill ratio
+	int count = FILL_CUTOFF - local_blocks->internal_blocks[warpID].get_fill();
+
+	int buf_size = buffer_sizes[global_buffer];
+
+	if (buf_size < count) count = buf_size;
+
+	if (count < 0) count = 0;
+
+	#if DEBUG_ASSERTS
+
+	assert(count < SLOTS_PER_BLOCK);
+
+	#endif
+
+
+	//this thread only needs to prep this for later! - global buffer is sorted and ready.
+	counters[warpID] = count;
+
+	// if (warpGroup.thread_rank() != 0){
+	// 	printf("Halp: %d %d\n", warpGroup.thread_rank(), count);
+	// }
+
+	//modify to be warp group specific
+
+	//local_blocks->internal_blocks[warpID].bulk_insert(threadID, buffers[global_buffer], count);
+
+	//TODO: double check this is correct
+	//I think this change is good but idk
+
+	// local_blocks->internal_blocks[warpID].sorted_bulk_insert(&temp_tags[warpID*SLOTS_PER_BLOCK], buffers[global_buffer], count, block_warpID, threadID);
+
+	// //local_blocks->internal_blocks[warpID].unlock(threadID);
+
+	// //block.bulk_insert(warpGroup.thread_rank(), buffers[global_buffer], count);
+
+
+	// //local_blocks->internal_blocks[buffer] = block;
+
+	// if (threadID == 0){
+
+	// 	buffers[global_buffer] += count;
+
+	// 	buffer_sizes[global_buffer] -= count;
+	// }
+
+}
+
+
 
 //dump_remaining_buffers_sorted
 //allocate space for a new zip algorithm and move items to the correct bucket
 //we need at most 25% of the space?
-__device__ void optimized_vqf::dump_remaining_buffers_sorted(thread_team_block * local_blocks, uint8_t * temp_tags, uint64_t blockID, int warpID, int threadID, uint64_t * misses){
+
+#if TAG_BITS == 8
+
+__device__ void optimized_vqf::dump_remaining_buffers_sorted(thread_team_block * local_blocks, uint8_t * temp_tags, uint64_t blockID, int warpID, int threadID, uint64_t * misses)
+
+
+#elif TAG_BITS == 16
+
+__device__ void optimized_vqf::dump_remaining_buffers_sorted(thread_team_block * local_blocks, uint16_t * temp_tags, uint64_t blockID, int warpID, int threadID, uint64_t * misses)
+
+
+#endif
+
+
+
+{
 
 
 	//get remaining keys
@@ -872,7 +1208,17 @@ __device__ void optimized_vqf::dump_remaining_buffers_sorted(thread_team_block *
 
 					slot = atomicAdd(&start_counters[i],1);
 
-					temp_tags[i*SLOTS_PER_BLOCK+slot] = hash & 0xff;
+					#if TAG_BITS == 8
+
+						temp_tags[i*SLOTS_PER_BLOCK+slot] = hash & 0xff;
+
+					#elif TAG_BITS == 16
+
+						temp_tags[i*SLOTS_PER_BLOCK+slot] = hash & 0xffff;
+
+					#endif
+
+				
 
 
 					#if DEBUG_ASSERTS
@@ -890,7 +1236,17 @@ __device__ void optimized_vqf::dump_remaining_buffers_sorted(thread_team_block *
 
 						slot = atomicAdd(&start_counters[alt_bucket], 1);
 
-						temp_tags[alt_bucket*SLOTS_PER_BLOCK+slot] = hash & 0xff;	
+						
+
+						#if TAG_BITS == 8
+
+							temp_tags[alt_bucket*SLOTS_PER_BLOCK+slot] = hash & 0xff;	
+
+						#elif TAG_BITS == 16
+
+							temp_tags[alt_bucket*SLOTS_PER_BLOCK+slot] = hash & 0xffff;	
+
+						#endif
 
 						#if DEBUG_ASSERTS
 
@@ -919,7 +1275,17 @@ __device__ void optimized_vqf::dump_remaining_buffers_sorted(thread_team_block *
 
 					slot = atomicAdd(&start_counters[alt_bucket], 1);
 
-					temp_tags[alt_bucket*SLOTS_PER_BLOCK+slot] = hash & 0xff;
+					//temp_tags[alt_bucket*SLOTS_PER_BLOCK+slot] = hash & 0xff;
+
+					#if TAG_BITS == 8
+
+						temp_tags[alt_bucket*SLOTS_PER_BLOCK+slot] = hash & 0xff;	
+
+					#elif TAG_BITS == 16
+
+						temp_tags[alt_bucket*SLOTS_PER_BLOCK+slot] = hash & 0xffff;	
+
+					#endif
 
 					#if DEBUG_ASSERTS
 
@@ -937,7 +1303,17 @@ __device__ void optimized_vqf::dump_remaining_buffers_sorted(thread_team_block *
 
 						slot = atomicAdd(&start_counters[i],1);
 
-						temp_tags[i*SLOTS_PER_BLOCK+slot] = hash & 0xff;
+						//temp_tags[i*SLOTS_PER_BLOCK+slot] = hash & 0xff;
+
+						#if TAG_BITS == 8
+
+							temp_tags[i*SLOTS_PER_BLOCK+slot] = hash & 0xff;
+
+						#elif TAG_BITS == 16
+
+							temp_tags[i*SLOTS_PER_BLOCK+slot] = hash & 0xffff;
+
+						#endif
 
 						#if DEBUG_ASSERTS
 
@@ -1011,6 +1387,13 @@ __device__ void optimized_vqf::dump_remaining_buffers_sorted(thread_team_block *
 		// 	#endif
 
 
+		//EOD HERE - patch sorting network for 16 bit 
+
+
+		#if TAG_BITS == 8
+
+
+		//start of 8 bit
 
 		if (length <= 32){
 
@@ -1029,9 +1412,9 @@ __device__ void optimized_vqf::dump_remaining_buffers_sorted(thread_team_block *
 		}	else {
 
 
-			if (threadID ==0)
+			// if (threadID ==0)
 
-			insertion_sort_max(&temp_tags[i*SLOTS_PER_BLOCK], length);
+			// insertion_sort_max(&temp_tags[i*SLOTS_PER_BLOCK], length);
 
 	
 
@@ -1052,6 +1435,60 @@ __device__ void optimized_vqf::dump_remaining_buffers_sorted(thread_team_block *
 			#endif
 
 		}
+
+		//end of 8 bit
+
+
+		#elif TAG_BITS == 16
+
+		//start of 16 bit
+
+		if (length <= 32){
+
+
+			sorting_network_16_bit(&temp_tags[i*SLOTS_PER_BLOCK], length, threadID);
+
+			__syncwarp();
+
+
+			#if DEBUG_ASSERTS
+
+			assert(sixteen_byte_assert_sorted(&temp_tags[i*SLOTS_PER_BLOCK], length));
+
+			#endif
+
+		}	else {
+
+
+			if (threadID ==0)
+
+			insertion_sort_16(&temp_tags[i*SLOTS_PER_BLOCK], length);
+
+	
+
+			__syncwarp();
+
+			sorting_network_16_bit(&temp_tags[i*SLOTS_PER_BLOCK], 32, threadID);
+
+			__syncwarp();
+
+
+			#if DEBUG_ASSERTS
+
+
+			assert(sixteen_byte_assert_sorted(&temp_tags[i*SLOTS_PER_BLOCK], 32));
+
+			assert(sixteen_byte_assert_sorted(&temp_tags[i*SLOTS_PER_BLOCK], length));
+
+			#endif
+
+		}
+
+		//end of 16 bit
+
+
+		#endif
+
 
 
 
@@ -1135,6 +1572,656 @@ __device__ void optimized_vqf::dump_remaining_buffers_sorted(thread_team_block *
 	// }
 
 }
+
+
+
+//dump_remaining_buffers_sorted
+//allocate space for a new zip algorithm and move items to the correct bucket
+//we need at most 25% of the space?
+
+
+__device__ bool optimized_vqf::query_single_item_sorted_debug(int warpID, uint64_t hash){
+
+
+	//pull info from item
+
+	uint64_t global_bucket = get_bucket_from_hash(hash);
+
+	uint64_t blockID = global_bucket / BLOCKS_PER_THREAD_BLOCK;
+
+	int internalID = global_bucket % BLOCKS_PER_THREAD_BLOCK;
+
+
+	bool found = blocks[blockID].internal_blocks[internalID].query(warpID, hash);
+
+	if (found) return true;
+
+	uint64_t alt_hash = get_alt_hash(hash, global_bucket);
+
+	int alt_bucket = get_bucket_from_hash(alt_hash) % BLOCKS_PER_THREAD_BLOCK;
+
+	if (alt_bucket == internalID) alt_bucket = (alt_bucket + 1) % BLOCKS_PER_THREAD_BLOCK;
+
+
+	return blocks[blockID].internal_blocks[alt_bucket].query(warpID, hash);
+
+}
+
+
+
+__device__ void optimized_vqf::dump_all_buffers_sorted(thread_team_block * local_blocks, int * offsets, int * counters, uint64_t blockID, int warpID, int threadID, uint64_t * misses)
+
+
+
+{
+
+
+	//get remaining keys
+
+	//how much shared mem can we work with - if this allocation fails use the same buffers as before?
+
+	// __shared__ int counters [BLOCKS_PER_THREAD_BLOCK];
+
+	// __shared__ int start_counters[BLOCKS_PER_THREAD_BLOCK];
+
+
+	__syncthreads();
+
+
+
+	//evenly partition
+	if (threadID == 0){
+
+		for (int i =warpID; i < BLOCKS_PER_THREAD_BLOCK; i+=WARPS_PER_BLOCK){
+
+
+		//remaining counters now takes into account the main list as well as new inserts
+
+		counters[i] = offsets[i] + local_blocks->internal_blocks[i].get_fill();
+
+		//start_counters[i] = 0;
+
+		}
+
+	}
+
+
+	__syncthreads();
+
+
+	#if DEBUG_ASSERTS
+
+
+	// for(int i = 0; i < BLOCKS_PER_THREAD_BLOCK; i++){
+	// 	assert(start_counters[i] == 0);
+	// }
+
+	for (int i =0; i < BLOCKS_PER_THREAD_BLOCK; i++){
+		assert(counters[i] <= SLOTS_PER_BLOCK);
+	}
+
+	__syncthreads();
+	#endif
+
+
+	//TINY OPTIMIZATION
+	// the two add operations aren't necessary, the primary record should be sufficient
+	// change once I get this working.
+
+	int slot;
+
+	for (int i = warpID; i < BLOCKS_PER_THREAD_BLOCK; i+=WARPS_PER_BLOCK){
+
+
+		//for each item in parallel, we check the global counters to determine which hash is submitted
+		uint64_t global_buffer = blockID*BLOCKS_PER_THREAD_BLOCK + i;
+
+		int remaining = buffer_sizes[global_buffer] - offsets[i];
+
+		for (int j = threadID; j < remaining; j+=32){
+
+
+			uint64_t hash = buffers[global_buffer][j+offsets[i]];
+
+			uint64_t alt_hash = get_alt_hash(hash, global_buffer);
+
+			int alt_bucket = get_bucket_from_hash(alt_hash) % BLOCKS_PER_THREAD_BLOCK;
+
+			if (alt_bucket == i) alt_bucket = (alt_bucket + 1) % BLOCKS_PER_THREAD_BLOCK;
+
+
+			#if DEBUG_ASSERTS
+
+			assert(j + offsets[i] < buffer_sizes[global_buffer]);
+
+			assert(alt_bucket < BLOCKS_PER_THREAD_BLOCK);
+			assert(i < BLOCKS_PER_THREAD_BLOCK);
+			assert(alt_bucket != i);
+
+
+			#endif
+
+			//replace with faster atomic
+
+			//
+			//if 	(atomicAdd(&counters[i], (int) 0) < atomicAdd(&counters[alt_bucket], (int) 0)){
+			if (atomicCAS(&counters[i], 0, 0) < atomicCAS(&counters[alt_bucket],0,0)){
+
+				slot = atomicAdd(&counters[i], 1);
+
+				//These adds aren't undone on failure as no one else can succeed.
+				if (slot < SLOTS_PER_BLOCK){
+
+					//slot - offset = fill+#writes - this is guaranteed to be a free slot
+					slot -= offsets[i];
+
+					#if TAG_BITS == 8
+
+						local_blocks->internal_blocks[i].tags[slot] = hash & 0xff;
+
+					#elif TAG_BITS == 16
+
+						local_blocks->internal_blocks[i].tags[slot] = hash & 0xffff;
+
+					#endif
+
+				
+
+
+					#if DEBUG_ASSERTS
+
+					assert(slot + offsets[i]  < SLOTS_PER_BLOCK);
+
+					#endif
+
+				} else {
+
+					//atomicSub(&counters[i],1);
+
+					//atomicadd fails, try alternate spot
+					slot = atomicAdd(&counters[alt_bucket], 1);
+
+					if (slot < SLOTS_PER_BLOCK){
+
+						slot -= offsets[alt_bucket];
+
+						
+
+						#if TAG_BITS == 8
+
+							//temp_tags[alt_bucket*SLOTS_PER_BLOCK+slot] = hash & 0xff;	
+							local_blocks->internal_blocks[alt_bucket].tags[slot] = hash & 0xff;
+
+						#elif TAG_BITS == 16
+
+							//temp_tags[alt_bucket*SLOTS_PER_BLOCK+slot] = hash & 0xffff;	
+							local_blocks->internal_blocks[alt_bucket].tags[slot] = hash & 0xffff;
+
+						#endif
+
+						#if DEBUG_ASSERTS
+
+						assert(slot + offsets[alt_bucket] < SLOTS_PER_BLOCK);
+
+						#endif					
+
+					} else {
+
+						//atomicSub(&counters[alt_bucket],1);
+
+						atomicAdd((unsigned long long int *) misses, 1ULL);
+
+					}
+
+
+
+				}
+
+
+			} else {
+
+				//alt < main slot
+				slot = atomicAdd(&counters[alt_bucket], 1);
+
+				if (slot < SLOTS_PER_BLOCK){
+
+					//slot = atomicAdd(&start_counters[alt_bucket], 1);
+					slot -= offsets[alt_bucket];
+
+					//temp_tags[alt_bucket*SLOTS_PER_BLOCK+slot] = hash & 0xff;
+
+						#if TAG_BITS == 8
+
+							//temp_tags[alt_bucket*SLOTS_PER_BLOCK+slot] = hash & 0xff;	
+							local_blocks->internal_blocks[alt_bucket].tags[slot] = hash & 0xff;
+
+						#elif TAG_BITS == 16
+
+							//temp_tags[alt_bucket*SLOTS_PER_BLOCK+slot] = hash & 0xffff;	
+							local_blocks->internal_blocks[alt_bucket].tags[slot] = hash & 0xffff;
+
+						#endif
+
+						#if DEBUG_ASSERTS
+
+						assert(slot + offsets[alt_bucket] < SLOTS_PER_BLOCK);
+
+						#endif		
+
+				} else {
+
+					//atomicSub(&counters[alt_bucket], 1); 
+
+					//primary insert failed, attempt secondary
+					slot = atomicAdd(&counters[i], 1);
+
+					if (slot < SLOTS_PER_BLOCK){
+
+						slot -= offsets[i];
+
+						//temp_tags[i*SLOTS_PER_BLOCK+slot] = hash & 0xff;
+
+						#if TAG_BITS == 8
+
+							local_blocks->internal_blocks[i].tags[slot] = hash & 0xff;
+
+						#elif TAG_BITS == 16
+
+							local_blocks->internal_blocks[i].tags[slot] = hash & 0xffff;
+
+						#endif
+
+					
+
+
+						#if DEBUG_ASSERTS
+
+						assert(slot + offsets[i]  < SLOTS_PER_BLOCK);
+
+						#endif
+
+					} else {
+
+
+						//atomicSub(&counters[alt_bucket], 1);
+						atomicAdd((unsigned long long int *) misses, 1ULL);
+
+
+						}
+
+					}
+
+
+
+
+			}
+
+
+		}
+
+	}
+
+
+
+	__syncthreads();
+
+
+	#if DEBUG_ASSERTS
+
+
+	//loop and look for items in temp buffers
+	for (int i = warpID; i < BLOCKS_PER_THREAD_BLOCK; i+=WARPS_PER_BLOCK){
+
+		//we want to assert that every item not in our main buffer made it to one of its temp
+
+		//we will check before and after sorting
+
+		if (counters[i] > SLOTS_PER_BLOCK){
+
+			counters[i] = SLOTS_PER_BLOCK;
+
+		}
+
+
+	}
+
+	//assert(misses[0] != 0);
+
+	__syncthreads();
+
+	for (int i = warpID; i < BLOCKS_PER_THREAD_BLOCK; i+=WARPS_PER_BLOCK){
+
+		uint64_t global_buffer = blockID*BLOCKS_PER_THREAD_BLOCK + i;
+
+		for (int j = offsets[i]; j < buffer_sizes[global_buffer]; j++){
+
+			bool found = false;
+
+			//check if first contains
+			//main buffer runs from temp_tags, starts at get_fill(), runs to length
+
+			uint64_t hash = buffers[global_buffer][j];
+
+			uint64_t alt_hash = get_alt_hash(hash, global_buffer);
+
+			int alt_bucket = get_bucket_from_hash(alt_hash) % BLOCKS_PER_THREAD_BLOCK;
+
+			if (alt_bucket == i) alt_bucket = (alt_bucket + 1) % BLOCKS_PER_THREAD_BLOCK;
+
+			int check_length = counters[i] - offsets[i] - local_blocks->internal_blocks[i].get_fill();
+
+			for (int k = local_blocks->internal_blocks[i].get_fill(); k < check_length; k++){
+
+				if (local_blocks->internal_blocks[i].tags[k] == (hash & 0xffff)) found = true;
+			}
+
+
+
+			//now check alt_bucket
+
+			int alt_length = counters[alt_bucket]- offsets[alt_bucket] - local_blocks->internal_blocks[alt_bucket].get_fill();
+
+			for (int k = local_blocks->internal_blocks[alt_bucket].get_fill(); k < alt_length; k++){
+
+				if (local_blocks->internal_blocks[alt_bucket].tags[k] == (hash & 0xffff)) found = true;
+			}
+
+
+			if (!found){
+				//assert(found);
+				continue;
+			}
+			
+
+		}
+
+
+	}
+
+	__syncthreads();
+
+	#endif
+
+
+	//at this point global buffer is ready, and so are the temp buffers (after sorting)
+
+
+
+	//sort and dump
+
+	for (int i = warpID; i < BLOCKS_PER_THREAD_BLOCK; i+=WARPS_PER_BLOCK){
+
+		if (counters[i] > SLOTS_PER_BLOCK){
+
+			counters[i] = SLOTS_PER_BLOCK;
+
+		}
+
+		#if DEBUG_ASSERTS
+
+		if (counters[i] > SLOTS_PER_BLOCK){
+
+			counters[i] = SLOTS_PER_BLOCK;
+
+			assert(counters[i] <= SLOTS_PER_BLOCK);
+		}
+		
+
+		#endif
+
+
+		//
+		int length = counters[i] - offsets[i] - local_blocks->internal_blocks[i].get_fill();
+ 
+
+
+		#if DEBUG_ASSERTS
+
+		if (length + local_blocks->internal_blocks[i].get_fill() + offsets[i] > SLOTS_PER_BLOCK){
+
+			assert(length + local_blocks->internal_blocks[i].get_fill() + offsets[i] <= SLOTS_PER_BLOCK);
+
+		}
+	
+
+		if (! (counters[i] <= SLOTS_PER_BLOCK)){
+
+				//start_counters[i] -1
+				assert(counters[i] <= SLOTS_PER_BLOCK);
+
+		}
+
+	
+
+		#endif
+
+
+
+		// if (length > 32 && threadID == 0)
+
+		// 		insertion_sort_max(&temp_tags[i*SLOTS_PER_BLOCK], length);
+
+		// 	sorting_network_8_bit(&temp_tags[i*SLOTS_PER_BLOCK], length, threadID);
+
+		// 	__syncwarp();
+
+		// 	#if DEBUG_ASSERTS
+
+		// 	assert(short_byte_assert_sorted(&temp_tags[i*SLOTS_PER_BLOCK], length));
+
+		// 	#endif
+
+
+		//EOD HERE - patch sorting network for 16 bit 
+
+
+		int tag_fill = local_blocks->internal_blocks[i].get_fill();
+
+		#if TAG_BITS == 8
+
+
+		//start of 8 bit
+
+		if (length <= 32){
+
+			#if DEBUG_ASSERTS
+
+				assert(tag_fill + length <=SLOTS_PER_BLOCK);
+
+			#endif
+			
+
+
+			sorting_network_8_bit(&local_blocks->internal_blocks[i].tags[tag_fill], length, threadID);
+
+			__syncwarp();
+
+
+			#if DEBUG_ASSERTS
+
+			assert(short_byte_assert_sorted(&local_blocks->internal_blocks[i].tags[tag_fill], length));
+
+			#endif
+
+		}	else {
+
+
+			if (threadID ==0)
+
+			insertion_sort_max(&local_blocks->internal_blocks[i].tags[tag_fill], length);
+
+	
+
+			__syncwarp();
+
+			sorting_network_8_bit(&local_blocks->internal_blocks[i].tags[tag_fill], 32, threadID);
+
+			__syncwarp();
+
+
+			#if DEBUG_ASSERTS
+
+
+			assert(short_byte_assert_sorted(&local_blocks->internal_blocks[i].tags[tag_fill], 32));
+
+			assert(short_byte_assert_sorted(&local_blocks->internal_blocks[i].tags[tag_fill], length));
+
+			#endif
+
+		}
+
+		//end of 8 bit
+
+
+		#elif TAG_BITS == 16
+
+		//start of 16 bit
+
+		if (length <= 32){
+
+			#if DEBUG_ASSERTS
+
+				assert(tag_fill + length <=SLOTS_PER_BLOCK);
+
+			#endif
+
+
+			sorting_network_16_bit(&local_blocks->internal_blocks[i].tags[tag_fill], length, threadID);
+
+			__syncwarp();
+
+
+			#if DEBUG_ASSERTS
+
+			assert(sixteen_byte_assert_sorted(&local_blocks->internal_blocks[i].tags[tag_fill], length));
+
+			#endif
+
+		}	else {
+
+
+			#if DEBUG_ASSERTS
+
+				assert(tag_fill + length <=SLOTS_PER_BLOCK);
+
+			#endif
+
+
+			if (threadID ==0)
+
+			insertion_sort_16(&local_blocks->internal_blocks[i].tags[tag_fill], length);
+
+	
+
+			__syncwarp();
+
+			sorting_network_16_bit(&local_blocks->internal_blocks[i].tags[tag_fill], 32, threadID);
+
+			__syncwarp();
+
+
+			#if DEBUG_ASSERTS
+
+
+			assert(sixteen_byte_assert_sorted(&local_blocks->internal_blocks[i].tags[tag_fill], 32));
+
+			assert(sixteen_byte_assert_sorted(&local_blocks->internal_blocks[i].tags[tag_fill], length));
+
+			#endif
+
+		}
+
+		//end of 16 bit
+
+		assert(length + tag_fill + offsets[i] <= SLOTS_PER_BLOCK);
+
+
+		#endif
+
+
+		//now all three arrays are sorted, and we have a valid target for write-out
+
+
+
+		//local_blocks->internal_blocks[i].sorted_bulk_finish(&temp_tags[i*SLOTS_PER_BLOCK+length], &temp_tags[i*SLOTS_PER_BLOCK], length, warpID, threadID);
+
+
+
+
+		//and merge into main arrays
+		uint64_t global_buffer = blockID*BLOCKS_PER_THREAD_BLOCK + i;
+
+
+		//buffers to be dumped
+		//global_buffer -> counter starts at 0, runs to offets[i];
+		//temp_tags, starts at 0, runs to get_fill();
+		//other temp_tags, starts at get_fill(), runs to length; :D
+
+
+		blocks[blockID].internal_blocks[i].dump_all_buffers_sorted(buffers[global_buffer], offsets[i], &local_blocks->internal_blocks[i].tags[0], tag_fill, &local_blocks->internal_blocks[i].tags[tag_fill], length, warpID, threadID);
+
+		//double triple check that dump_all_buffers increments the internal counts like it needs to.
+
+
+		//maybe this is the magic?
+
+		#if DEBUG_ASSERTS
+		__threadfence();
+
+
+		if (blocks[blockID].internal_blocks[i].sorted_bulk_query_num_found(threadID, buffers[global_buffer], offsets[i]) != offsets[i]){
+
+			assert(blocks[blockID].internal_blocks[i].sorted_bulk_query_num_found(threadID, buffers[global_buffer], offsets[i]) == offsets[i]);
+
+		}
+
+		if (blocks[blockID].internal_blocks[i].sorted_bulk_query_num_found_short(threadID, &local_blocks->internal_blocks[i].tags[0], tag_fill) != tag_fill){
+
+			assert(blocks[blockID].internal_blocks[i].sorted_bulk_query_num_found_short(threadID, &local_blocks->internal_blocks[i].tags[0], tag_fill) == tag_fill);
+	
+
+		}
+
+
+		if (blocks[blockID].internal_blocks[i].sorted_bulk_query_num_found_short(threadID, &local_blocks->internal_blocks[i].tags[tag_fill], length) != length ){
+
+			assert(blocks[blockID].internal_blocks[i].sorted_bulk_query_num_found_short(threadID, &local_blocks->internal_blocks[i].tags[tag_fill], length) == length);
+
+		}
+
+
+		//assert(blocks[blockID].internal_blocks[i].sorted_bulk_query_num_found(threadID, buffers[global_buffer], buffer_sizes[global_buffer]) == buffer_sizes[global_buffer]);
+
+		
+		#endif
+
+	}
+
+
+
+	#if DEBUG_ASSERTS
+
+
+	__threadfence();
+
+	//let everyone do all checks
+	// for (int i =0; i < BLOCKS_PER_THREAD_BLOCK; i+=1){
+
+	// 	uint64_t global_buffer = blockID*BLOCKS_PER_THREAD_BLOCK + i;
+
+
+	// 	for (int j = 0; j < buffer_sizes[global_buffer]; j++){
+
+	// 		assert(query_single_item_sorted_debug(threadID, buffers[global_buffer][j]));
+	// 	}
+
+	// }
+
+	#endif
+
+
+
+	}
 
 // //dump up to FILL_CUTOFF into each block
 // // this is handled at a per warp level, and this version does not rely on cooperative groups cause they slow down cudagdb
@@ -2315,7 +3402,7 @@ __global__ void set_buffers_binary(optimized_vqf * my_vqf, uint64_t num_keys, co
 		//upper == lower iff 0 or max key
 		index = lower + (upper - lower)/2;
 
-		assert(my_vqf->get_bucket_from_hash(keys[index]) == idx);
+		//assert(my_vqf->get_bucket_from_hash(keys[index]) <= idx);
 
 
 		my_vqf->buffers[idx] = ((uint64_t *)keys) + index;

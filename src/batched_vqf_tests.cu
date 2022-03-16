@@ -31,6 +31,9 @@
 
 
 #include "include/sorted_block_vqf.cuh"
+
+#include "include/key_val_pair.cuh"
+#include "include/templated_block.cuh"
 #include "include/metadata.cuh"
 
 #include <openssl/rand.h>
@@ -68,6 +71,51 @@ __host__ void insert_timing(optimized_vqf * my_vqf, uint64_t * vals, uint64_t nv
   	misses[0] = 0;
 
   	cudaDeviceSynchronize();
+}
+
+
+__host__ std::chrono::duration<double> split_insert_timing(optimized_vqf * my_vqf, uint64_t * vals, uint64_t nvals, uint64_t * misses){
+
+	auto start = std::chrono::high_resolution_clock::now();
+
+	my_vqf->attach_buffers(vals, nvals);
+
+	cudaDeviceSynchronize();
+
+
+	auto midpoint = std::chrono::high_resolution_clock::now();
+
+
+	my_vqf->sorted_bulk_insert_buffers_preattached(misses);
+	
+
+	cudaDeviceSynchronize();
+	//and insert
+
+	auto end = std::chrono::high_resolution_clock::now();
+
+
+	std::chrono::duration<double> attach_diff = midpoint-start;
+  	std::chrono::duration<double> insert_diff = end-midpoint;	
+  	std::chrono::duration<double> diff = end-start;
+
+
+
+  	std::cout << "attached in " << attach_diff.count() << ", inserted in " << insert_diff.count() << ".\n";
+
+  	std::cout << "Inserted " << nvals << " in " << diff.count() << " seconds\n";
+
+  	printf("Inserts per second: %f\n", nvals/diff.count());
+
+  	printf("Misses %llu\n", misses[0]);
+
+  	cudaDeviceSynchronize();
+
+  	misses[0] = 0;
+
+  	cudaDeviceSynchronize();
+
+  	return diff;
 }
 
 
@@ -423,13 +471,112 @@ __host__ uint64_t * generate_data(uint64_t nitems){
 	return vals;
 }
 
+
+__host__ uint64_t * load_main_data(uint64_t nitems){
+
+
+	char main_location[] = "/global/cscratch1/sd/hunterm/vqf_data/main_data-32-data.txt";
+
+
+	char * vals = (char * ) malloc(nitems * sizeof(uint64_t));
+
+	//std::ifstream myfile(main_location);
+
+	//std::string line;
+
+
+	FILE * pFile;
+
+
+	pFile = fopen(main_location, "rb");
+
+	if (pFile == NULL) abort();
+
+	size_t result;
+
+	result = fread(vals, 1, nitems*sizeof(uint64_t), pFile);
+
+	if (result != nitems*sizeof(uint64_t)) abort();
+
+
+
+	// //current supported format is no spacing one endl for the file terminator.
+	// if (myfile.is_open()){
+
+
+	// 	getline(myfile, line);
+
+	// 	strncpy(vals, line.c_str(), sizeof(uint64_t)*nitems);
+
+	// 	myfile.close();
+		
+
+	// } else {
+
+	// 	abort();
+	// }
+
+
+	return (uint64_t *) vals;
+
+
+}
+
+__host__ uint64_t * load_alt_data(uint64_t nitems){
+
+
+	char main_location[] = "/global/cscratch1/sd/hunterm/vqf_data/fp_data-32-data.txt";
+
+
+	char * vals = (char * ) malloc(nitems * sizeof(uint64_t));
+
+
+	//std::ifstream myfile(main_location);
+
+	//std::string line;
+
+
+	FILE * pFile;
+
+
+	pFile = fopen(main_location, "rb");
+
+	if (pFile == NULL) abort();
+
+	size_t result;
+
+	result = fread(vals, 1, nitems*sizeof(uint64_t), pFile);
+
+	if (result != nitems*sizeof(uint64_t)) abort();
+
+
+
+	return (uint64_t *) vals;
+
+
+}
+
 int main(int argc, char** argv) {
 	
 
 	uint64_t nbits = atoi(argv[1]);
 
+	uint64_t num_batches = atoi(argv[2]);
+
+	double batch_percent = 1.0 / num_batches;
+
 
 	uint64_t nitems = (1ULL << nbits) * .85;
+
+
+	//add one? just to guarantee that the clip is correct
+	uint64_t items_per_batch = 1.05*nitems * batch_percent;
+
+
+	printf("Starting test with %d bits, %llu items inserted in %d batches of %d.\n", nbits, nitems, num_batches, items_per_batch);
+
+
+
 
 	uint64_t * vals;
 	uint64_t * dev_vals;
@@ -438,13 +585,13 @@ int main(int argc, char** argv) {
 	uint64_t * dev_other_vals;
 
 
-	vals = generate_data(nitems);
+	vals = load_main_data(nitems);
 
 
 	uint64_t * fp_vals;
 
 	//generate fp data to see comparison with true inserts
-	fp_vals = generate_data(nitems);
+	fp_vals = load_alt_data(nitems);
 
 	// vals = (uint64_t*) malloc(nitems*sizeof(vals[0]));
 
@@ -458,17 +605,17 @@ int main(int argc, char** argv) {
 
 
 
-	cudaMalloc((void ** )& dev_vals, nitems*sizeof(vals[0]));
+	cudaMalloc((void ** )& dev_vals, items_per_batch*sizeof(vals[0]));
 
-	cudaMemcpy(dev_vals, vals, nitems * sizeof(vals[0]), cudaMemcpyHostToDevice);
+	//cudaMemcpy(dev_vals, vals, nitems * sizeof(vals[0]), cudaMemcpyHostToDevice);
 
 
 	bool * inserts;
 
 
-	cudaMalloc((void ** )& inserts, nitems*sizeof(bool));
+	cudaMalloc((void ** )& inserts, items_per_batch*sizeof(bool));
 
-	cudaMemset(inserts, 0, nitems*sizeof(bool));
+	cudaMemset(inserts, 0, items_per_batch*sizeof(bool));
 
 
 
@@ -484,7 +631,13 @@ int main(int argc, char** argv) {
 	misses[0] = 0;
 
 
+	//change the way vqf is built to better suit test and use cases? TODO with active reconstruction for exact values / struct support
 	optimized_vqf * my_vqf =  build_vqf(1ULL << nbits);
+
+
+	std::chrono::duration<double> diff = std::chrono::nanoseconds::zero();
+
+
 
 
 	printf("Setup done\n");
@@ -496,101 +649,94 @@ int main(int argc, char** argv) {
 
 	
 
+	for (int batch = 0; batch< num_batches; batch++){
 
-	cudaDeviceSynchronize();
+		//calculate size of segment
 
-	
-	insert_timing(my_vqf, dev_vals, nitems,  misses);
+		printf("Batch %d:\n", batch);
 
-	//cudaMemcpy(dev_vals, vals, nitems * sizeof(vals[0]), cudaMemcpyHostToDevice);
+		//runs from batch/num_batches*nitems to batch
+		uint64_t start = batch*nitems/num_batches;
+		uint64_t end = (batch+1)*nitems/num_batches;
+		if (end > nitems) end = nitems;
 
-	cudaDeviceSynchronize();
-
-	//sort_timing(my_vqf);
-
-	cudaDeviceSynchronize();
-
-	//query_timing(my_vqf, dev_vals, nitems,  misses);
-
-    cudaMemcpy(dev_vals, vals, nitems * sizeof(vals[0]), cudaMemcpyHostToDevice);
-
-// 	full_query_timing(my_vqf, dev_vals, nitems, misses);
-
-	cudaDeviceSynchronize();
+		uint64_t items_to_insert = end-start;
 
 
-// 	cudaMemcpy(dev_vals, vals, nitems * sizeof(vals[0]), cudaMemcpyHostToDevice);
+		assert(items_to_insert < items_per_batch);
+
+		//prep dev_vals for this round
+		cudaMemcpy(dev_vals, vals + start, items_to_insert*sizeof(vals[0]), cudaMemcpyHostToDevice);
+
+		cudaDeviceSynchronize();
+
+		//launch inserts
+		diff += split_insert_timing(my_vqf, dev_vals, items_to_insert, misses);
+
+		cudaDeviceSynchronize();
+
+		cudaMemcpy(dev_vals, vals + start, items_to_insert*sizeof(vals[0]), cudaMemcpyHostToDevice);
+
+		cudaDeviceSynchronize();
 
 
-	sorted_bulk_query_timing(my_vqf, dev_vals, nitems, misses);
-
-	cudaDeviceSynchronize();
-
-
-	cudaMemcpy(dev_vals, fp_vals, nitems * sizeof(vals[0]), cudaMemcpyHostToDevice);
+		//launch queries
+		sorted_bulk_query_timing(my_vqf, dev_vals, items_to_insert, misses);
 
 
+		cudaDeviceSynchronize();
 
-	cudaDeviceSynchronize();
+		cudaMemcpy(dev_vals, fp_vals + start, items_to_insert*sizeof(vals[0]), cudaMemcpyHostToDevice);
 
-
-
-	sorted_bulk_query_fp_timing(my_vqf, dev_vals, nitems, misses);
-
-
-	//sorted_bulk_query_fp_timing(optimized_vqf* my_vqf, uint64_t * vals, uint64_t nvals, uint64_t * misses){
-
-	
+		cudaDeviceSynchronize();
 
 
-	my_vqf->get_average_fill_block();
-
-	cudaDeviceSynchronize();
-
-
-	my_vqf->get_average_fill_team();
+		//false queries
+		sorted_bulk_query_fp_timing(my_vqf, dev_vals, items_to_insert, misses);
 
 
-	cudaDeviceSynchronize();
+		cudaDeviceSynchronize();
 
-// 	bulk_query_timing(my_vqf, dev_vals, nitems, misses);
+		my_vqf->get_average_fill_block();
 
-// 	// cudaMemcpy(dev_vals, vals, nitems * sizeof(vals[0]), cudaMemcpyHostToDevice);
-
-// 	// cudaDeviceSynchronize();
+		cudaDeviceSynchronize();
 
 
-// 	//remove_timing(my_vqf, dev_vals, inserts, nitems,  misses);
+		my_vqf->get_average_fill_team();
+
+
+		cudaDeviceSynchronize();
+
+		//keep some organized spacing
+		printf("\n\n");
+
+		fflush(stdout);
+
+		cudaDeviceSynchronize();
 
 
 
-// 	cudaDeviceSynchronize();
-
-// //	sort_timing(my_vqf);
-
-// 	cudaDeviceSynchronize();
+	}
 
 
-// 	cudaMemcpy(dev_vals, vals, nitems * sizeof(vals[0]), cudaMemcpyHostToDevice);
+	//key_val_pair<uint64_t, uint64_t> test;
+	templated_block<uint64_t> test_block;
 
-// 	cudaDeviceSynchronize();
+	test_block.test();
 
-// 	bulk_query_timing(my_vqf, dev_vals, nitems, misses);
+	templated_block<key_val_pair<uint8_t, uint8_t>> test_block_2;
 
-// 	// cudaMemcpy(dev_vals, vals, nitems * sizeof(vals[0]), cudaMemcpyHostToDevice);
+	test_block_2.test();
 
-// 	// cudaDeviceSynchronize();
+	printf("Tests Finished.\n");
 
+	std::cout << "Queried " << nitems << " in " << diff.count() << " seconds\n";
 
-// 	//remove_timing(my_vqf, dev_vals, inserts, nitems,  misses);
-
-// 	cudaDeviceSynchronize();
-// 	//and insert
-
-// 	//auto end = std::chrono::high_resolution_clock::now();
-
+	printf("Final speed: %f\n", nitems/diff.count());
 
 	free(vals);
+
+	free(fp_vals);
 
 	cudaFree(dev_vals);
 

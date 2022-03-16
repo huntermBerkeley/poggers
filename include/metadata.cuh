@@ -2,7 +2,7 @@
 #define METADATA
 
 #define DEBUG_ASSERTS 0
-#define MAX_FILL 28
+//#define MAX_FILL 28
 #define SINGLE_REGION 0
 
 //do blocks assume exclusive access? if yes, no need to lock
@@ -14,10 +14,10 @@
 #define WARPS_PER_BLOCK 16
 #define BLOCK_SIZE (WARPS_PER_BLOCK * 32)
 
-#define BLOCKS_PER_THREAD_BLOCK 128
+#define BLOCKS_PER_THREAD_BLOCK 32
 
 //# of blocks to be inserted per warp in the bulked insert phase
-#define REGIONS_PER_WARP 8
+//#define REGIONS_PER_WARP 8
 
 
 //power of 2 metadata
@@ -29,7 +29,9 @@
 
 //Atomic blocks stats
 
-#define TAG_BITS 8
+#define TAG_BITS 16
+#define VAL_BITS 16 
+
 #define BYTES_PER_CACHE_LINE 128
 #define CACHE_LINES_PER_BLOCK 1
 

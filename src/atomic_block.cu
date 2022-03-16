@@ -385,8 +385,19 @@ __device__ void atomic_block::bulk_insert(int warpID, uint64_t * items, uint64_t
 }
 
 
-__device__ void atomic_block::sorted_bulk_insert(uint8_t * temp_tags, uint64_t * items, uint64_t nitems, int teamID, int warpID){
-	
+#if TAG_BITS == 8
+
+	__device__ void atomic_block::sorted_bulk_insert(uint8_t * temp_tags, uint64_t * items, uint64_t nitems, int teamID, int warpID)
+
+
+#elif TAG_BITS == 16
+
+	__device__ void atomic_block::sorted_bulk_insert(uint16_t * temp_tags, uint64_t * items, uint64_t nitems, int teamID, int warpID)
+
+
+#endif
+
+	{	
 
 	
 	//for the 16 bit 64 byte case maybe write a preprocessor directive to not do the loop
@@ -401,9 +412,28 @@ __device__ void atomic_block::sorted_bulk_insert(uint8_t * temp_tags, uint64_t *
 	#if DEBUG_ASSERTS
 
 
+	
+
+	#if TAG_BITS == 8
+
 	assert(byte_assert_sorted(items, nitems));
 
 	assert(short_byte_assert_sorted(tags, fill));
+
+	#elif TAG_BITS == 16
+
+	if (!two_byte_assert_sorted(items, nitems)){
+
+		assert(two_byte_assert_sorted(items, nitems));
+
+	}
+
+
+
+	assert(sixteen_byte_assert_sorted(tags, fill));
+
+	#endif
+
 
 
 	#endif
@@ -412,7 +442,17 @@ __device__ void atomic_block::sorted_bulk_insert(uint8_t * temp_tags, uint64_t *
 
 	//now that bounds are checked, setup for main insert
 
+
+	#if TAG_BITS == 8
+
 	merge_dual_arrays_8_bit_64_bit(temp_tags, &tags[0], items, fill, nitems, teamID, warpID);
+
+
+	#elif TAG_BITS == 16
+
+	merge_dual_arrays_16_bit_64_bit(temp_tags, &tags[0], items, fill, nitems, teamID, warpID);
+
+	#endif
 
 
 	
@@ -429,6 +469,9 @@ __device__ void atomic_block::sorted_bulk_insert(uint8_t * temp_tags, uint64_t *
 
 
 
+	#if TAG_BITS == 8
+
+
 	if (!short_byte_assert_sorted(tags, fill+nitems)){
 
 		assert(short_byte_assert_sorted(tags, fill+nitems));
@@ -436,26 +479,188 @@ __device__ void atomic_block::sorted_bulk_insert(uint8_t * temp_tags, uint64_t *
 	}
 
 
+	#elif TAG_BITS == 16
+
+	if (!sixteen_byte_assert_sorted(tags, fill+nitems)){
+
+		assert(sixteen_byte_assert_sorted(tags, fill+nitems));
+
+	}
+
 	#endif
+
+	#endif
+
+
 
 	return;
 
 }
 
 
+//NEW STUFF - dynamic write back to main memory
+
+#if TAG_BITS == 8
+
+	__device__ void atomic_block::dump_all_buffers_sorted(uint64_t * global_buffer, int buffer_count, uint8_t * original_items, int nitems, uint8_t * remaining_items, int n_remaining, int teamID, int warpID);
+
+
+#elif TAG_BITS == 16
+
+	__device__ void atomic_block::dump_all_buffers_sorted(uint64_t * global_buffer, int buffer_count, uint16_t * original_items, int nitems, uint16_t * remaining_items, int n_remaining, int teamID, int warpID)
+
+#endif
+
+	{	
+
+	
+	//for the 16 bit 64 byte case maybe write a preprocessor directive to not do the loop
+
+
+	//who cares about fill we don't need it! we just need to update with the appropriate length at the end
+	//int fill = get_fill();
+
+
+	//without debug on you can mess this up, safety checks are handled at that level by higher up
+	//processes
+	#if DEBUG_ASSERTS
+
+
+	assert(buffer_count+n_remaining+nitems <= SLOTS_PER_BLOCK);
+	
+
+	#if TAG_BITS == 8
+
+	assert(byte_assert_sorted(global_buffer, buffer_count));
+
+	assert(short_byte_assert_sorted(original_items, nitems));
+
+	assert(short_byte_assert_sorted(remaining_list, n_remaining));
+
+	#elif TAG_BITS == 16
+
+	if (!two_byte_assert_sorted(global_buffer, buffer_count)){
+
+		assert(two_byte_assert_sorted(global_buffer, buffer_count));
+
+	}
+
+
+
+	//assert(sixteen_byte_assert_sorted(original_list, n_list));
+
+	assert(sixteen_byte_assert_sorted(original_items, nitems));
+
+	assert(sixteen_byte_assert_sorted(remaining_items, n_remaining));
+
+	#endif
+
+
+
+	#endif
+
+
+
+	//now that bounds are checked, setup for main insert
+
+
+	#if TAG_BITS == 8
+
+	abort();
+
+	#elif TAG_BITS == 16
+
+	merge_3_into_tags_16_bit(&tags[0], global_buffer, buffer_count, original_items, nitems, remaining_items, n_remaining, teamID, warpID);
+
+	#endif
+
+
+	
+
+	//entirely replace
+	//double check on this as well
+	if (warpID == 0) atomicExch((unsigned int *) & md, nitems+buffer_count+n_remaining);
+
+
+
+	__syncwarp();
+
+
+	#if DEBUG_ASSERTS
+
+
+	int fill = get_fill();
+
+	assert(fill <= SLOTS_PER_BLOCK);
+
+	#if TAG_BITS == 8
+
+
+	if (!short_byte_assert_sorted(tags, fill)){
+
+		assert(short_byte_assert_sorted(tags, fill));
+
+	}
+
+
+	#elif TAG_BITS == 16
+
+	if (!sixteen_byte_assert_sorted(tags, fill)){
+
+		assert(sixteen_byte_assert_sorted(tags, fill));
+
+	}
+
+	#endif
+
+	#endif
+
+
+
+	return;
+
+ }
+
+
 //a variant of the insert scheme that treats temp_tags as a local array, because it is
 //this is a workaround to redefining the shared memory structure of the entire project
 // while still maintaining minimal memory use
-__device__ void atomic_block::sorted_bulk_finish(uint8_t * temp_tags, uint8_t * items, uint64_t nitems, int teamID, int warpID){
+
+#if TAG_BITS == 8
+
+__device__ void atomic_block::sorted_bulk_finish(uint8_t * temp_tags, uint8_t * items, uint64_t nitems, int teamID, int warpID)
+
+
+#elif TAG_BITS == 16
+
+__device__ void atomic_block::sorted_bulk_finish(uint16_t * temp_tags, uint16_t * items, uint64_t nitems, int teamID, int warpID)
+
+
+#endif
+
+	{
 
 
 	int fill = get_fill();
 
 	#if DEBUG_ASSERTS
 
+
+	#if TAG_BITS == 8
+
 	assert(short_byte_assert_sorted(items, nitems));
 
 	assert(short_byte_assert_sorted(tags, fill));
+
+
+	#elif TAG_BITS == 16
+
+	assert(sixteen_byte_assert_sorted(items, nitems));
+
+	assert(sixteen_byte_assert_sorted(tags, fill));
+
+	#endif
+
 
 
 	if (nitems + fill >= SLOTS_PER_BLOCK){
@@ -471,7 +676,16 @@ __device__ void atomic_block::sorted_bulk_finish(uint8_t * temp_tags, uint8_t * 
 	//now that bounds are checked, setup for main insert
 
 	//TODO fix merge_dual_arrays
+
+	#if TAG_BITS == 8
 	merge_dual_arrays(temp_tags, &tags[0], items, fill, nitems, teamID, warpID);
+
+
+	#elif TAG_BITS == 16
+
+	merge_dual_arrays_sixteen(temp_tags, &tags[0], items, fill, nitems, teamID, warpID);
+
+	#endif
 
 
 	
@@ -486,7 +700,7 @@ __device__ void atomic_block::sorted_bulk_finish(uint8_t * temp_tags, uint8_t * 
 
 	#if DEBUG_ASSERTS
 
-
+	#if TAG_BITS == 8
 
 	if (!short_byte_assert_sorted(tags, fill+nitems)){
 
@@ -494,6 +708,15 @@ __device__ void atomic_block::sorted_bulk_finish(uint8_t * temp_tags, uint8_t * 
 
 	}
 
+	#elif TAG_BITS == 16
+
+	if (!sixteen_byte_assert_sorted(tags, fill+nitems)){
+
+		assert(sixteen_byte_assert_sorted(tags, fill+nitems));
+
+	}
+
+	#endif
 
 	#endif
 
@@ -580,7 +803,7 @@ __device__ bool atomic_block::sort_block(int teamID, int warpID){
 
 	int fill = get_fill();
 
-	short_warp_sort(tags, fill, teamID, warpID);
+	//short_warp_sort(tags, fill, teamID, warpID);
 
 	//bubble_sort(tags, fill, warpID);
 
@@ -668,7 +891,18 @@ __device__ bool atomic_block::assert_sorted(int warpID){
 
 	int fill = get_fill();
 
-	return short_byte_assert_sorted(tags, fill);
+
+	#if TAG_BITS == 8
+
+		return short_byte_assert_sorted(tags, fill);
+
+	#elif TAG_BITS == 16
+
+		return sixteen_byte_assert_sorted(tags, fill);
+
+	#endif
+
+
 
 }
 
@@ -685,7 +919,20 @@ __device__ bool atomic_block::sorted_bulk_query(int warpID, uint64_t * items, bo
 
 	//big_bubble_sort(items, nitems, warpID);
 
+
+	#if DEBUG_ASSERTS
+
+	#if TAG_BITS == 8
+
 	assert(byte_assert_sorted(items, nitems));
+
+	#elif TAG_BITS == 16
+
+	assert(two_byte_assert_sorted(items, nitems));
+
+	#endif
+
+	#endif
 
 	//bitonicSort(uint64_t * items, int low, int count, bool dir, int warpID){
 
@@ -695,8 +942,21 @@ __device__ bool atomic_block::sorted_bulk_query(int warpID, uint64_t * items, bo
 
 	__syncwarp();
 
+	#if DEBUG_ASSERTS
+
+	#if TAG_BITS == 8 
+
 	assert(short_byte_assert_sorted(tags, fill));
 
+	#elif TAG_BITS == 16
+
+	assert(sixteen_byte_assert_sorted(tags, fill));
+
+	#endif
+
+	#endif
+
+	if (fill == 0 || nitems == 0) return;
 
 
 	int left = 0;
@@ -708,7 +968,7 @@ __device__ bool atomic_block::sorted_bulk_query(int warpID, uint64_t * items, bo
 
 		uint8_t comp = items[left] & 0xFF;
 
-		#else
+		#elif TAG_BITS == 16
 
 		uint16_t comp = items[left] & 0xFFFF;
 
@@ -763,13 +1023,384 @@ __device__ bool atomic_block::sorted_bulk_query(int warpID, uint64_t * items, bo
 
 
 
+//first attempt - query 32 values at a time from the main list
+__device__ bool atomic_block::sorted_bulk_query_cooperative(int warpID, uint64_t * items, bool * found, uint64_t nitems){
+
+
+	//byteBitonicSort(items, 0, nitems, true, warpID);
+
+
+	//big_bubble_sort(items, nitems, warpID);
+
+
+	#if DEBUG_ASSERTS
+
+	#if TAG_BITS == 8
+
+	assert(byte_assert_sorted(items, nitems));
+
+	#elif TAG_BITS == 16
+
+	assert(two_byte_assert_sorted(items, nitems));
+
+	#endif
+
+	#endif
+
+	//bitonicSort(uint64_t * items, int low, int count, bool dir, int warpID){
+
+	int fill = get_fill();
+
+	//bubble_sort(tags, fill, warpID);
+
+	__syncwarp();
+
+	#if DEBUG_ASSERTS
+
+	#if TAG_BITS == 8 
+
+	assert(short_byte_assert_sorted(tags, fill));
+
+	#elif TAG_BITS == 16
+
+	assert(sixteen_byte_assert_sorted(tags, fill));
+
+	#endif
+
+	#endif
+
+	if (fill == 0 || nitems == 0) return;
+
+
+	int left = 0;
+	int right = 0;
+
+	while (true){
+
+		#if TAG_BITS == 8
+
+		uint8_t comp = items[left] & 0xFF;
+
+		#elif TAG_BITS == 16
+
+		uint16_t comp = items[left] & 0xFFFF;
+
+		#endif
+
+
+		//new workflow, everyone checks for an exact match
+		//then everyone queries greater than
+		//if exact we continue
+		//else if greater than we are done
+
+		bool avoiding_segfault = right+warpID < fill;
+
+		bool ballot = (avoiding_segfault && comp == tags[right+warpID]);
+
+		int thread_found = __ffs(__ballot_sync(0xffffffff, ballot)) -1;
+
+		if (thread_found != -1){
+
+
+			found[left] = true;
+			//increment left by one
+			left++;
+
+			//since all items < thread_found are < tags[right+warpID], skip items
+			right+=thread_found;
+
+			if (left >= nitems) return;
+
+
+		} else {
+
+			//else purge all items smaller
+
+			bool ballot = (avoiding_segfault && comp > tags[right+warpID]);
+
+			int first_larger = __ffs(__ballot_sync(0xffffffff, ballot));
+
+			//0 2 2 3
+			// 1
+
+			//t f f f
+
+			//skip threadID+1
+
+			//if we didn't find you and someone here is smaller, you don't exist
+			if (first_larger > 0){
+				found[left] = false;
+				left++;
+
+				if (left >= nitems) return;
+
+			}
+
+			right+=first_larger;
+
+			if (right >= fill){
+
+				for (int i = left+warpID; i < nitems; i+=32){
+					found[i] = false;
+				}
+
+				return;
+			}
+
+
+		}
+
+
+
+
+
+
+	}
+
+
+
+} 
+
+
+__device__ int atomic_block::sorted_bulk_query_num_found(int warpID, uint64_t * items, uint64_t nitems){
+
+
+	//byteBitonicSort(items, 0, nitems, true, warpID);
+
+	int num_found = 0;
+
+
+	//big_bubble_sort(items, nitems, warpID);
+
+
+	#if DEBUG_ASSERTS
+
+	#if TAG_BITS == 8
+
+	assert(byte_assert_sorted(items, nitems));
+
+	#elif TAG_BITS == 16
+
+	assert(two_byte_assert_sorted(items, nitems));
+
+	#endif
+
+	#endif
+
+	//bitonicSort(uint64_t * items, int low, int count, bool dir, int warpID){
+
+	int fill = get_fill();
+
+	//bubble_sort(tags, fill, warpID);
+
+	__syncwarp();
+
+	#if DEBUG_ASSERTS
+
+	#if TAG_BITS == 8 
+
+	assert(short_byte_assert_sorted(tags, fill));
+
+	#elif TAG_BITS == 16
+
+	assert(sixteen_byte_assert_sorted(tags, fill));
+
+	#endif
+
+	#endif
+
+	if (fill == 0 || nitems == 0) return 0;
+
+
+	int left = 0;
+	int right = 0;
+
+	while (true){
+
+		#if TAG_BITS == 8
+
+		uint8_t comp = items[left] & 0xFF;
+
+		#elif TAG_BITS == 16
+
+		uint16_t comp = items[left] & 0xFFFF;
+
+		#endif
+
+		if (comp == tags[right]){
+
+			num_found++;
+			left++;
+
+			if (left >= nitems) return num_found;
+
+
+		} else if (comp < tags[right]){
+
+			//left is a miss
+			num_found++;
+			left++;
+
+			if (left >= nitems) return num_found;
+
+		} //else if (items[left] > tags[right])
+		else {
+
+			right++;
+
+			if (right >= fill){
+
+
+				return num_found;
+
+			}
+
+		
+
+		}
+
+
+
+
+	}
+
+	return num_found;
+
+
+
+} 
+
+
+
+__device__ int atomic_block::sorted_bulk_query_num_found_short(int warpID, uint16_t * items, uint64_t nitems){
+
+
+	//byteBitonicSort(items, 0, nitems, true, warpID);
+
+	int num_found = 0;
+
+
+	//big_bubble_sort(items, nitems, warpID);
+
+
+	#if DEBUG_ASSERTS
+
+	#if TAG_BITS == 8
+
+	assert(short_byte_assert_sorted(items, nitems));
+
+	#elif TAG_BITS == 16
+
+	assert(sixteen_byte_assert_sorted(items, nitems));
+
+	#endif
+
+	#endif
+
+	//bitonicSort(uint64_t * items, int low, int count, bool dir, int warpID){
+
+	int fill = get_fill();
+
+	//bubble_sort(tags, fill, warpID);
+
+	__syncwarp();
+
+	#if DEBUG_ASSERTS
+
+	#if TAG_BITS == 8 
+
+	assert(short_byte_assert_sorted(tags, fill));
+
+	#elif TAG_BITS == 16
+
+	assert(sixteen_byte_assert_sorted(tags, fill));
+
+	#endif
+
+	#endif
+
+	if (fill == 0 || nitems == 0) return 0;
+
+
+	int left = 0;
+	int right = 0;
+
+	while (true){
+
+		#if TAG_BITS == 8
+
+		uint8_t comp = items[left];
+
+		#elif TAG_BITS == 16
+
+		uint16_t comp = items[left];
+
+		#endif
+
+		if (comp == tags[right]){
+
+			num_found++;
+			left++;
+
+			if (left >= nitems) return num_found;
+
+
+		} else if (comp < tags[right]){
+
+			//left is a miss
+			num_found++;
+			left++;
+
+			if (left >= nitems) return num_found;
+
+		} //else if (items[left] > tags[right])
+		else {
+
+			right++;
+
+			if (right >= fill){
+
+
+				return num_found;
+
+			}
+
+		
+
+		}
+
+
+
+
+	}
+
+	return num_found;
+
+
+
+} 
+
+
+
 __device__ bool atomic_block::binary_search_query(uint64_t item){
 
 	int fill = get_fill();
 
 	#if DEBUG_ASSERTS
 
+
+
+	#if TAG_BITS == 8
+
 	assert(short_byte_assert_sorted(tags, fill));
+
+
+	#elif TAG_BITS == 16
+
+	assert(sixteen_byte_assert_sorted(tags, fill));
+
+	#endif
+
 
 	#endif
 
@@ -778,7 +1409,12 @@ __device__ bool atomic_block::binary_search_query(uint64_t item){
 
 	uint8_t tag = item & 0xff;
 
+	#elif TAG_BITS == 16
+
+	uint16_t tag = item & 0xffff;
+
 	#endif
+
 
 
 	int lower = 0;

@@ -8,6 +8,6 @@
 #SBATCH -G 1
 #SBATCH -o ncu_profile.out
 
-srun -N 1 -n 1 ncu -f -o recordings/team-vqf-ncu-profile --set full ./team_vqf_tests 28
+srun -N 1 -n 1 ncu -f -o recordings/batch_analysis --set full ./batched_vqf_tests 30 20
 
 

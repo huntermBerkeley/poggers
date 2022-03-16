@@ -1,5 +1,4 @@
-TARGETS=sorted_block_vqf_tests
-
+TARGETS=batched_template_tests templated_test
 
 ifdef D
 	DEBUG=-g -G
@@ -27,13 +26,13 @@ OBJDIR=obj
 
 
 CC = gcc -std=gnu11
-CXX = g++ -std=c++11
+CXX = g++ -std=c++20
 CU = nvcc -dc -x cu
 LD = nvcc
 
 CXXFLAGS = -Wall $(DEBUG) $(PROFILE) $(OPT) $(ARCH) -m64 -I. -Iinclude 
 
-CUFLAGS = $(DEBUG) $(OPT) -arch=sm_70 -rdc=true -I. -Iinclude
+CUFLAGS = $(DEBUG) $(OPT) -arch=sm_70 -rdc=true -I. -Iinclude -lineinfo
 
 CUDALINK = -L/usr/common/software/sles15_cgpu/cuda/11.1.1/lib64/compat -L/usr/common/software/sles15_cgpu/cuda/11.1.1/lib64 -L/usr/common/software/sles15_cgpu/cuda/11.1.1/extras/CUPTI/lib6 -lcurand --nvlink-options -suppress-stack-size-warning
 
@@ -47,6 +46,8 @@ LDFLAGS = $(DEBUG) $(PROFILE) $(OPT) $(CUDALINK) -arch=sm_70 -lpthread -lssl -lc
 all: $(TARGETS)
 
 # dependencies between programs and .o files
+
+data_gen:						$(OBJDIR)/data_gen.o
 
 test:							$(OBJDIR)/test.o \
 								$(OBJDIR)/vqf_block.o
@@ -149,7 +150,29 @@ sorted_block_vqf_tests:		$(OBJDIR)/sorted_block_vqf_tests.o \
 							$(OBJDIR)/hashutil.o \
 							$(OBJDIR)/sorting_helper.o
 
+batched_vqf_tests:		$(OBJDIR)/batched_vqf_tests.o \
+							$(OBJDIR)/sorted_block_vqf.o \
+							$(OBJDIR)/atomic_block.o \
+							$(OBJDIR)/hashutil.o \
+							$(OBJDIR)/sorting_helper.o \
 
+
+
+batched_hash_table_tests: 	$(OBJDIR)/batched_hash_table_tests.o \
+							$(OBJDIR)/gpu_quad_hash_table.o \
+							$(OBJDIR)/hashutil.o
+
+
+batch_global_load_vqf_tests:	$(OBJDIR)/batch_global_load_vqf_tests.o \
+								$(OBJDIR)/warp_storage_block.o \
+								$(OBJDIR)/global_load_vqf.o \
+								$(OBJDIR)/hashutil.o
+
+templated_test:					$(OBJDIR)/templated_test.o \
+								$(OBJDIR)/hashutil.o
+
+batched_template_tests:			$(OBJDIR)/batched_template_tests.o \
+								$(OBJDIR)/hashutil.o
 # dependencies between .o files and .cc (or .c) files
 
 
@@ -172,8 +195,10 @@ $(OBJDIR)/atomic_vqf.o: $(LOC_SRC)/atomic_vqf.cu $(LOC_INCLUDE)/atomic_vqf.cuh $
 $(OBJDIR)/multi_vqf_host.o: $(LOC_SRC)/multi_vqf_host.cu $(LOC_INCLUDE)/multi_vqf_host.cuh $(LOC_INCLUDE)/metadata.cuh 
 $(OBJDIR)/sorting_helper.o: $(LOC_SRC)/sorting_helper.cu $(LOC_INCLUDE)/sorting_helper.cuh
 $(OBJDIR)/atomic_vqf.o: $(LOC_SRC)/sorted_block_vqf.cu $(LOC_INCLUDE)/sorted_block_vqf.cuh $(LOC_INCLUDE)/metadata.cuh
-
-
+$(OBJDIR)/gpu_quad_hash_table.o: $(LOC_SRC)/gpu_quad_hash_table.cu $(LOC_INCLUDE)/gpu_quad_hash_table.cuh
+$(OBJDIR)/warp_storage_block.o: $(LOC_SRC)/warp_storage_block.cu $(LOC_INCLUDE)/warp_storage_block.cuh
+$(OBJDIR)/global_load_vqf.o: $(LOC_SRC)/global_load_vqf.cu $(LOC_INCLUDE)/global_load_vqf.cuh
+$(OBJDIR)/templated_block.o: $(LOC_SRC)/templated_block.cu $(LOC_INCLUDE)/templated_block.cuh
 
 #
 # generic build rules -- add -Xcompiler -fopenmp to .cu to add back in mpi
