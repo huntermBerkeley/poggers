@@ -30,7 +30,7 @@
 #include <bitset>
 
 
-#include "include/templated_vqf.cuh"
+#include "include/persistent_templated_vqf.cuh"
 #include "include/metadata.cuh"
 
 #include <openssl/rand.h>
@@ -61,18 +61,16 @@ __global__ void check_hits(bool * hits, uint64_t * misses, uint64_t nitems){
 }
 
 template <typename Key, typename Val = empty, template<typename T> typename Wrapper = empty_wrapper>
-__host__ std::chrono::duration<double> split_insert_timing(templated_vqf<Key, Val, Wrapper> * my_vqf, uint64_t * reference_vals, key_val_pair<Key, Val, Wrapper> * vals, uint64_t nvals, uint64_t * misses){
+__host__ std::chrono::duration<double> split_insert_timing(tcqf<Key, Val, Wrapper> * my_vqf, uint64_t * reference_vals, key_val_pair<Key, Val, Wrapper> * vals, uint64_t nvals, uint64_t * misses){
 
 
-	uint64_t num_blocks = my_vqf->get_num_blocks();
 
-	uint64_t num_teams = my_vqf->get_num_teams();
 
 	cudaDeviceSynchronize();
 
 	auto start = std::chrono::high_resolution_clock::now();
 
-	my_vqf->attach_lossy_buffers(reference_vals, vals, nvals, num_blocks);
+	my_vqf->attach_lossy_buffers(reference_vals, vals, nvals);
 
 
 	cudaDeviceSynchronize();
@@ -83,7 +81,7 @@ __host__ std::chrono::duration<double> split_insert_timing(templated_vqf<Key, Va
 	auto midpoint = std::chrono::high_resolution_clock::now();
 
 
-	my_vqf->bulk_insert(misses, num_teams);
+	my_vqf->bulk_insert(misses);
 	
 
 	cudaDeviceSynchronize();
@@ -118,9 +116,93 @@ __host__ std::chrono::duration<double> split_insert_timing(templated_vqf<Key, Va
 }
 
 
+template <typename Key, typename Val = empty, template<typename T> typename Wrapper = empty_wrapper>
+__host__ std::chrono::duration<double> persistent_insert_timing(tcqf<Key, Val, Wrapper> * my_vqf, uint64_t * reference_vals, key_val_pair<Key, Val, Wrapper> * vals, uint64_t nvals, uint64_t * misses){
+
+
+	key_val_pair<Key, Val, Wrapper> ** buffers;
+	int * buffer_sizes;
+
+	cudaMalloc((void **)& buffers, my_vqf->num_blocks*sizeof(key_val_pair<Key, Val, Wrapper> *));
+
+	cudaMalloc((void **)& buffer_sizes, my_vqf->num_blocks*sizeof(int));
+
+	//and boot
+	
+
+	gpuErrchk(cudaDeviceSynchronize());
+
+	auto start = std::chrono::high_resolution_clock::now();
+
+	my_vqf->prep_insert(nvals, reference_vals, vals, buffers, buffer_sizes);
+	
+	//full sync can happen
+	gpuErrchk(cudaDeviceSynchronize());
+
+	//sleep for a second to allow for boot up time
+	//we can't synchronize while this is active
+	//sleep(1);
+
+	auto midpoint = std::chrono::high_resolution_clock::now();
+
+	//my_vqf->bulk_insert(misses);
+	
+
+	
+	my_vqf->boot_up();
+
+	sleep(1);
+
+	auto second_start = std::chrono::high_resolution_clock::now();
+
+	my_vqf->submit_insert_only(nvals, reference_vals, vals, buffers, buffer_sizes);
+	
+	my_vqf->shut_down();
+
+
+	gpuErrchk(cudaDeviceSynchronize());
+	//cudaDeviceSynchronize();
+
+	//gpuErrchk( cudaPeekAtLastError() );
+	//and insert
+
+	auto end = std::chrono::high_resolution_clock::now();
+
+	//my_vqf->shut_down();
+
+	
+  	std::chrono::duration<double> attach_diff = midpoint-start;
+  	std::chrono::duration<double> insert_diff = end - second_start;
+
+  	std::chrono::duration<double> diff = end - second_start + midpoint-start;
+
+
+   std::cout << "attached in " << attach_diff.count() << ", inserted in " << insert_diff.count() << ".\n";
+
+  	std::cout << "Inserted " << nvals << " in " << diff.count() << " seconds\n";
+
+  	printf("Inserts per second: %f\n", nvals/(diff.count()));
+
+  	printf("Misses %llu\n", misses[0]);
+
+  	gpuErrchk(cudaDeviceSynchronize());
+
+  	misses[0] = 0;
+
+  	gpuErrchk(cudaDeviceSynchronize());
+
+  	gpuErrchk(cudaFree(buffers));
+  	gpuErrchk(cudaFree(buffer_sizes));
+
+
+  	
+
+  	return diff;
+}
+
 
 template <typename Key, typename Val = empty, template<typename T> typename Wrapper = empty_wrapper>
-__host__ std::chrono::duration<double> bulk_query_timing(templated_vqf<Key, Val, Wrapper> * my_vqf, uint64_t * reference_vals, key_val_pair<Key, Val, Wrapper> * vals, uint64_t nvals, uint64_t * misses){
+__host__ void bulk_query_timing(tcqf<Key, Val, Wrapper> * my_vqf, uint64_t * reference_vals, key_val_pair<Key, Val, Wrapper> * vals, uint64_t nvals, uint64_t * misses){
 
 
 
@@ -128,19 +210,14 @@ __host__ std::chrono::duration<double> bulk_query_timing(templated_vqf<Key, Val,
 
 	cudaMalloc((void **) & hits, nvals*sizeof(bool));
 
-
-	uint64_t num_blocks = my_vqf->get_num_blocks();
-
-	uint64_t num_teams = my_vqf->get_num_teams();
-
 	cudaDeviceSynchronize();
 
 	auto start = std::chrono::high_resolution_clock::now();
 
 
 	
-	my_vqf->attach_lossy_buffers(reference_vals, vals, nvals, num_blocks);
-	my_vqf->bulk_query(hits, num_teams);
+	my_vqf->attach_lossy_buffers(reference_vals, vals, nvals);
+	my_vqf->bulk_query(hits);
 
 	cudaDeviceSynchronize();
 	//and insert
@@ -171,13 +248,11 @@ __host__ std::chrono::duration<double> bulk_query_timing(templated_vqf<Key, Val,
   	misses[0] = 0;
 
   	cudaDeviceSynchronize();
-
-  	return diff;
 }
 
 
 template <typename Key, typename Val = empty, template<typename T> typename Wrapper = empty_wrapper>
-__host__ std::chrono::duration<double> fp_timing(templated_vqf<Key, Val, Wrapper> * my_vqf, uint64_t * reference_vals, key_val_pair<Key, Val, Wrapper> * vals, uint64_t nvals, uint64_t * misses){
+__host__ void fp_timing(tcqf<Key, Val, Wrapper> * my_vqf, uint64_t * reference_vals, key_val_pair<Key, Val, Wrapper> * vals, uint64_t nvals, uint64_t * misses){
 
 
 
@@ -186,19 +261,14 @@ __host__ std::chrono::duration<double> fp_timing(templated_vqf<Key, Val, Wrapper
 
 	cudaMalloc((void **) & hits, nvals*sizeof(bool));
 
-
-	uint64_t num_blocks = my_vqf->get_num_blocks();
-
-	uint64_t num_teams = my_vqf->get_num_teams();
-
 	cudaDeviceSynchronize();
 
 	auto start = std::chrono::high_resolution_clock::now();
 
 
 	
-	my_vqf->attach_lossy_buffers(reference_vals, vals, nvals, num_blocks);
-	my_vqf->bulk_query(hits, num_teams);
+	my_vqf->attach_lossy_buffers(reference_vals, vals, nvals);
+	my_vqf->bulk_query(hits);
 
 	cudaDeviceSynchronize();
 	//and insert
@@ -233,8 +303,6 @@ __host__ std::chrono::duration<double> fp_timing(templated_vqf<Key, Val, Wrapper
   	misses[0] = 0;
 
   	cudaDeviceSynchronize();
-
-   return diff;
 }
 
 
@@ -445,17 +513,9 @@ int main(int argc, char** argv) {
 	//change the way vqf is built to better suit test and use cases? TODO with active reconstruction for exact values / struct support
 	
 	//quad_hash_table * ht =  build_hash_table(1ULL << nbits);
-	templated_vqf<key_type> * vqf = build_vqf<key_type>( (uint64_t)(1ULL << nbits));
+	tcqf<key_type> * vqf = build_vqf<key_type>( (uint64_t)(1ULL << nbits));
 
-	//std::chrono::duration<double> diff = std::chrono::nanoseconds::zero();
-
-
-	std::chrono::duration<double>  * insert_diff = (std::chrono::duration<double>  *) malloc(num_batches*sizeof(std::chrono::duration<double>));
-	std::chrono::duration<double>  * query_diff = (std::chrono::duration<double>  *) malloc(num_batches*sizeof(std::chrono::duration<double>));
-	std::chrono::duration<double>  * fp_diff = (std::chrono::duration<double>  *) malloc(num_batches*sizeof(std::chrono::duration<double>));
-
-	uint64_t * batch_amount = (uint64_t *) malloc(num_batches*sizeof(uint64_t));
-
+	std::chrono::duration<double> diff = std::chrono::nanoseconds::zero();
 
 
 
@@ -466,6 +526,16 @@ int main(int argc, char** argv) {
 
 
 	cudaDeviceSynchronize();
+
+
+	//dumb_testing
+	// vqf->boot_up();
+
+	// vqf->shut_down();
+
+	cudaDeviceSynchronize();
+
+
 
 	
 
@@ -485,8 +555,6 @@ int main(int argc, char** argv) {
 
 		assert(items_to_insert < items_per_batch);
 
-		batch_amount[batch] = items_to_insert;
-
 		//prep dev_vals for this round
 
 		cudaMemcpy(dev_val_references, val_references + start, items_to_insert*sizeof(uint64_t), cudaMemcpyHostToDevice);
@@ -496,7 +564,7 @@ int main(int argc, char** argv) {
 		cudaDeviceSynchronize();
 
 		//launch inserts
-		insert_diff[batch] = split_insert_timing<key_type>(vqf, dev_val_references, dev_vals, items_to_insert, misses);
+		diff += persistent_insert_timing<key_type>(vqf, dev_val_references, dev_vals, items_to_insert, misses);
 
 		cudaDeviceSynchronize();
 
@@ -508,7 +576,7 @@ int main(int argc, char** argv) {
 
 
 		//launch queries
-		query_diff[batch] = bulk_query_timing<key_type>(vqf, dev_val_references, dev_vals, items_to_insert, misses);
+		//bulk_query_timing<key_type>(vqf, dev_val_references, dev_vals, items_to_insert, misses);
 
 
 		cudaDeviceSynchronize();
@@ -521,7 +589,7 @@ int main(int argc, char** argv) {
 
 
 		//false queries
-		fp_diff[batch] = fp_timing<key_type>(vqf, dev_val_references, dev_vals, items_to_insert, misses);
+		//fp_timing<key_type>(vqf, dev_val_references, dev_vals, items_to_insert, misses);
 
 
 		cudaDeviceSynchronize();
@@ -538,142 +606,11 @@ int main(int argc, char** argv) {
 
 	}
 
-	std::chrono::duration<double> summed_insert_diff = std::chrono::nanoseconds::zero();
-
-	for (int i =0; i < num_batches;i++){
-		summed_insert_diff += insert_diff[i];
-	}
-
-	std::chrono::duration<double> summed_query_diff = std::chrono::nanoseconds::zero();
-
-	for (int i =0; i < num_batches;i++){
-		summed_query_diff += query_diff[i];
-	}
-
-	std::chrono::duration<double> summed_fp_diff = std::chrono::nanoseconds::zero();
-
-	for (int i =0; i < num_batches;i++){
-		summed_fp_diff += fp_diff[i];
-	}
-
 	printf("Tests Finished.\n");
 
-	std::cout << "Queried " << nitems << " in " << summed_insert_diff.count() << " seconds\n";
+	std::cout << "Queried " << nitems << " in " << diff.count() << " seconds\n";
 
-	printf("Final speed: %f\n", nitems/summed_insert_diff.count());
-
-	if (argc == 4){
-
-		printf("Dumping into file\n");
-
-		const char * dir = "batched_results/";
-
-		char filename_insert[256];
-		char filename_lookup[256];
-		char filename_false_lookup[256];
-		char filename_aggregate[256];
-
-		const char * insert_op = "_insert_";
-
-		snprintf(filename_insert, strlen(dir) + strlen(argv[3]) + strlen(insert_op) + strlen(argv[1]) + strlen(argv[2]) + 2, "%s%s%s%s_%s", dir, argv[3], insert_op, argv[1], argv[2]);
-
-		const char * lookup_op = "_lookup_";
-
-		snprintf(filename_lookup, strlen(dir) + strlen(argv[3]) + strlen(lookup_op) + strlen(argv[1]) + strlen(argv[2]) + 2, "%s%s%s%s_%s", dir, argv[3], lookup_op, argv[1], argv[2]);
-
-		const char * fp_ops = "_fp_";
-
-		snprintf(filename_false_lookup, strlen(dir) + strlen(argv[3]) + strlen(fp_ops) + strlen(argv[1]) + strlen(argv[2]) + 2, "%s%s%s%s_%s", dir, argv[3], fp_ops, argv[1], argv[2]);
-
-		const char * agg_ops = "_aggregate_";
-
-		snprintf(filename_aggregate, strlen(dir) + strlen(argv[3]) + strlen(agg_ops)+ strlen(argv[1]) + strlen(argv[2]) + 2, "%s%s%s%s_%s", dir, argv[3], agg_ops, argv[1], argv[2]);
-
-
-		FILE *fp_insert = fopen(filename_insert, "w");
-		FILE *fp_lookup = fopen(filename_lookup, "w");
-		FILE *fp_false_lookup = fopen(filename_false_lookup, "w");
-		FILE *fp_agg = fopen(filename_aggregate, "w");
-
-		if (fp_insert == NULL) {
-			printf("Can't open the data file %s\n", filename_insert);
-			exit(1);
-		}
-
-		if (fp_lookup == NULL ) {
-		    printf("Can't open the data file %s\n", filename_lookup);
-			exit(1);
-		}
-
-		if (fp_false_lookup == NULL) {
-			printf("Can't open the data file %s\n", filename_false_lookup);
-			exit(1);
-		}
-
-		if (fp_agg == NULL) {
-			printf("Can't open the data file %s\n", filename_aggregate);
-			exit(1);
-		}
-
-
-		printf("Writing results to file: %s\n",  filename_insert);
-
-		fprintf(fp_insert, "x_0 y_0\n");
-		for (int i = 0; i < num_batches; i++){
-			fprintf(fp_insert, "%d", i*100/num_batches);
-
-			fprintf(fp_insert, " %f\n", batch_amount[i]/insert_diff[i].count());
-		}
-		printf("Insert performance written!\n");
-
-		fclose(fp_insert);
-
-
-		printf("Writing results to file: %s\n",  filename_lookup);
-
-		fprintf(fp_lookup, "x_0 y_0\n");
-		for (int i = 0; i < num_batches; i++){
-			fprintf(fp_lookup, "%d", i*100/num_batches);
-
-			fprintf(fp_lookup, " %f\n", batch_amount[i]/query_diff[i].count());
-		}
-		printf("lookup performance written!\n");
-
-		fclose(fp_lookup);
-
-
-
-		printf("Writing results to file: %s\n",  filename_false_lookup);
-
-		fprintf(fp_false_lookup, "x_0 y_0\n");
-		for (int i = 0; i < num_batches; i++){
-			fprintf(fp_false_lookup, "%d", i*100/num_batches);
-
-			fprintf(fp_false_lookup, " %f\n", batch_amount[i]/fp_diff[i].count());
-		}
-		printf("false_lookup performance written!\n");
-
-		fclose(fp_false_lookup);
-
-
-		printf("Writing results to file: %s\n",  filename_aggregate);
-
-		//fprintf(fp_agg, "x_0 y_0\n");
-
-		fprintf(fp_agg, "Aggregate inserts: %f\n", nitems/summed_insert_diff.count());
-		fprintf(fp_agg, "Aggregate Queries: %f\n", nitems/summed_query_diff.count());
-		fprintf(fp_agg, "Aggregate fp: %f\n", nitems/summed_fp_diff.count());
-
-
-
-		printf("false_lookup performance written!\n");
-
-		fclose(fp_false_lookup);
-
-
-
-	}
-
+	printf("Final speed: %f\n", nitems/diff.count());
 
 	free(vals);
 

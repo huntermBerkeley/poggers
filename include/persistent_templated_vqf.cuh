@@ -1,5 +1,5 @@
-#ifndef TEMPLATED_VQF_H 
-#define TEMPLATED_VQF_H
+#ifndef PERSISTENT_TEMPLATED_VQF_H 
+#define PERSISTENT_TEMPLATED_VQF_H
 
 
 #include <cuda.h>
@@ -9,6 +9,7 @@
 #include "include/templated_block.cuh"
 #include "include/hashutil.cuh"
 #include "include/templated_sorting_funcs.cuh"
+#include "include/cuda_queue.cuh"
 #include <stdio.h>
 #include <assert.h>
 
@@ -18,6 +19,10 @@
 #include <thrust/device_vector.h>
 #include <thrust/remove.h>
 #include <thrust/device_ptr.h>
+
+//#include <cub/cub.cuh>
+
+#include <cooperative_groups.h>
 
 
 //counters are now external to allow them to permanently reside in the l1 cache.
@@ -67,6 +72,106 @@ __global__ void hash_all_key_purge(Filter * my_vqf, uint64_t * vals, Key_type * 
 	vals[tid] = new_key;
 
 }
+
+
+template <typename Filter, typename Key_type>
+__global__ void set_buffers_binary_external(Filter * my_vqf, Key_type** buffers, uint64_t * references, Key_type * keys, uint64_t nvals){
+
+
+		// #if DEBUG_ASSERTS
+
+		// assert(assert_sorted(keys, nvals));
+
+		// #endif
+
+
+		uint64_t idx = threadIdx.x + blockDim.x * blockIdx.x;
+
+		if (idx >= my_vqf->num_blocks) return;
+
+		//uint64_t slots_per_lock = VIRTUAL_BUCKETS;
+
+		//since we are finding all boundaries, we only need
+
+		//printf("idx %llu\n", idx);
+
+		//this sounds right? - they divide to go back so I think this is fine
+		//this is fine but need to apply a hash
+		uint64_t boundary = idx; //<< qf->metadata->bits_per_slot;
+
+
+		//This is the code I'm stealing that assumption from
+		//uint64_t hash_bucket_index = hash >> qf->metadata->bits_per_slot;
+		//uint64_t hash_remainder = hash & BITMASK(qf->metadata->bits_per_slot);	
+		//uint64_t lock_index = hash_bucket_index / slots_per_lock;
+
+
+		uint64_t lower = 0;
+		uint64_t upper = nvals ;
+		uint64_t index = upper-lower;
+
+		//upper is non inclusive bound
+
+
+		//if we exceed bounds that's our index
+		while (upper != lower){
+
+
+			index = lower + (upper - lower)/2;
+
+			//((keys[index] >> TAG_BITS)
+			uint64_t bucket = my_vqf->get_bucket_from_reference(references[index]);
+
+
+			if (index != 0)
+			uint64_t old_bucket = my_vqf->get_bucket_from_reference(references[index-1]);
+
+			if (bucket < boundary){
+
+				//false - the list before this point can be removed
+				lower = index+1;
+
+				//jump to a new midpoint
+				
+
+
+			} else if (index==0){
+
+				//will this fix? otherwise need to patch via round up
+				upper = index;
+
+				//(get_bucket_from_reference(references[index-1])
+				//(keys[index-1] >> TAG_BITS)
+
+			} else if (my_vqf->get_bucket_from_reference(references[index-1]) < boundary) {
+
+				//set index! this is the first instance where I am valid and the next isnt
+				//buffers[idx] = keys+index;
+				break;
+
+			} else {
+
+				//we are too far right, all keys to the right do not matter
+				upper = index;
+
+
+			}
+
+		}
+
+		//we either exited or have an edge condition:
+		//upper == lower iff 0 or max key
+		index = lower + (upper - lower)/2;
+
+		//assert(my_vqf->get_bucket_from_hash(keys[index]) <= idx);
+
+
+		buffers[idx] = keys + index;
+		
+
+
+}
+
 
 template <typename Filter, typename Key_type>
 __global__ void set_buffers_binary(Filter * my_vqf, uint64_t * references, Key_type * keys, uint64_t nvals){
@@ -200,6 +305,40 @@ __global__ void set_buffer_lens(Filter * my_vqf, uint64_t num_keys,  Key_type * 
 
 }
 
+template <typename Filter, typename Key_type>
+__global__ void set_buffer_lens_external(Key_type ** buffers, int * buffer_sizes, uint64_t num_keys, Key_type * keys, uint64_t num_blocks){
+
+
+	// #if DEBUG_ASSERTS
+
+	// assert(assert_sorted(keys, num_keys));
+
+	// #endif
+
+	uint64_t num_buffers = num_blocks;
+
+
+	uint64_t idx = threadIdx.x + blockDim.x*blockIdx.x;
+
+	if (idx >= num_buffers) return;
+
+
+	//only 1 thread will diverge - should be fine - any cost already exists because of tail
+	if (idx != num_buffers-1){
+
+		//this should work? not 100% convinced but it seems ok
+		buffer_sizes[idx] = buffers[idx+1] - buffers[idx];
+	} else {
+
+		buffer_sizes[idx] = num_keys - (buffers[idx] - keys);
+
+	}
+
+	return;
+
+
+}
+
 template <typename Filter>
 __global__ void sorted_bulk_insert_kernel(Filter * vqf, uint64_t * misses){
 
@@ -216,8 +355,8 @@ __global__ void sorted_bulk_insert_kernel(Filter * vqf, uint64_t * misses){
 
 	//vqf->sorted_mini_filter_block(misses);
 
-	vqf->sorted_dev_insert(misses);
-	//vqf->persistent_dev_insert(misses);
+	//vqf->sorted_dev_insert(misses);
+	vqf->persistent_dev_insert(misses);
 
 	return;
 
@@ -1647,7 +1786,7 @@ __device__ void dump_all_buffers_into_local_block(thread_team_block<block_type> 
 
 
 template <typename Key, typename Val = empty, template<typename T> typename Wrapper = empty_wrapper >
-__host__ void free_vqf(templated_vqf<Key, Val, Wrapper> * vqf){
+__host__ void free_internal_vqf(templated_vqf<Key, Val, Wrapper> * vqf){
 
 
 	templated_vqf<Key, Val, Wrapper> * host_vqf;
@@ -1663,8 +1802,9 @@ __host__ void free_vqf(templated_vqf<Key, Val, Wrapper> * vqf){
 
 	cudaFree(host_vqf->block_counters);
 
-	cudaFree(host_vqf->buffers);
-	cudaFree(host_vqf->buffer_sizes);
+	//THESE ARE DISABLED - NOW HANDLED EXTERNALLY
+	//cudaFree(host_vqf->buffers);
+	//cudaFree(host_vqf->buffer_sizes);
 
 	cudaFreeHost(host_vqf);
 
@@ -1675,7 +1815,7 @@ __host__ void free_vqf(templated_vqf<Key, Val, Wrapper> * vqf){
 
 
 template <typename Key, typename Val = empty, template<typename T> typename Wrapper = empty_wrapper >
-__host__ templated_vqf<Key, Val, Wrapper> * build_vqf(uint64_t nitems){
+__host__ templated_vqf<Key, Val, Wrapper> * build_internal_vqf(uint64_t nitems){
 
 
 	using key_type = key_val_pair<Key, Val, Wrapper>;
@@ -1748,5 +1888,396 @@ __host__ templated_vqf<Key, Val, Wrapper> * build_vqf(uint64_t nitems){
 
 }
 
+
+template <typename Filter, typename Key_type>
+__global__ void persistent_kernel(Filter * my_vqf, cuda_queue<Key_type> * queue){
+
+
+	using block_type = templated_block<Key_type>;
+
+	__shared__ thread_team_block<block_type> primary_block;
+
+	__shared__ thread_team_block<block_type> alt_storage_block;
+
+	__shared__ int local_counters[BLOCKS_PER_THREAD_BLOCK];  
+
+	__shared__ int buffer_offsets[BLOCKS_PER_THREAD_BLOCK];
+
+	__shared__ int secondary_buffer_counters[BLOCKS_PER_THREAD_BLOCK];
+
+	thread_team_block<block_type> * primary_block_ptr = &primary_block;
+
+	thread_team_block<block_type> * alt_storage_block_ptr = &alt_storage_block;
+
+	uint64_t tid = threadIdx.x+blockIdx.x*blockDim.x;
+
+	uint64_t blockID = blockIdx.x;
+
+	int warpID = threadIdx.x/32;
+
+	int threadID = threadIdx.x % 32;
+
+	//this should never trigger since launches are aligned
+	if (blockID >= my_vqf->num_teams) return;
+
+
+
+
+	my_vqf->load_local_blocks(primary_block_ptr, &local_counters[0], blockID, warpID, threadID);
+
+
+	int current_item = 1;
+
+	//For now, loads do a pointer_copy
+	bool done = false;
+
+	uint64_t miss_counter = 0;
+	uint64_t * misses = &miss_counter;
+
+	while(!done){
+
+		// if (tid == 0){
+		// 	printf("Stalling\n");
+		// }
+
+		if (queue->current_object_ready(current_item)){
+
+			//tasks
+			
+
+			submission_block<Key_type> * current_block = queue->load_current_block(current_item);
+
+
+			if(tid ==0){
+				printf("Task received! %d\n", current_item);
+				printf("Task type: %d\n", current_block->submission_type);
+			}
+
+			if (current_block->submission_type==0){
+				done = true;
+			}
+
+			else if (current_block->submission_type ==1){
+
+				if (tid ==0) printf("Task %d is an insert\n", current_item);
+
+				my_vqf->buffers = current_block->buffers;
+				my_vqf->buffer_sizes = current_block->buffer_sizes;
+
+				//get counters for new_items
+
+				for (int i = warpID; i < BLOCKS_PER_THREAD_BLOCK; i+=WARPS_PER_BLOCK){
+
+				my_vqf->buffer_get_primary_count(primary_block_ptr, (int *)& buffer_offsets, blockID, i ,warpID, threadID);
+
+
+				}
+			
+				my_vqf->dump_all_buffers_into_local_block(primary_block_ptr, alt_storage_block_ptr, &local_counters[0], &buffer_offsets[0], &secondary_buffer_counters[0], blockID, warpID, threadID, misses);
+
+
+				
+				thread_team_block<block_type> * temp_ptr = primary_block_ptr;
+				primary_block_ptr = alt_storage_block_ptr;
+				alt_storage_block_ptr = temp_ptr;
+
+
+				//borked here
+
+			}
+
+			//0 is kill
+			//1 is insert
+			//2 is query
+
+			__threadfence();
+
+
+
+			if (tid ==0){
+
+				atomicExch((unsigned long long int *) &current_block->work_done, 1ULL);
+
+			}
+
+			auto g = cooperative_groups::this_grid();
+			g.sync();
+
+			__threadfence();
+			current_item +=1;
+
+			if (tid ==0) printf("Threads now checking for task %llu\n", current_item);
+
+			//sync here
+
+		}
+	}
+
+	if (tid ==0){
+		printf("Unloading queue\n");
+	}
+	
+	my_vqf->unload_local_blocks(primary_block_ptr, &local_counters[0], blockID, warpID, threadID);
+
+	return;
+
+}
+
+template <typename Key_type>
+__global__ void submit_task_and_wait(cuda_queue<Key_type> * queue, uint64_t taskID, int task_type, Key_type ** buffers, int * buffer_sizes){
+
+	uint64_t tid = threadIdx.x+blockDim.x*blockIdx.x;
+
+	if (tid != 0) return;
+
+
+	printf("Starting submission\n");
+
+	submission_block<Key_type> block;
+
+	block.submissionID = taskID;
+	block.submission_type = task_type;
+	block.buffers = buffers;
+	block.buffer_sizes = buffer_sizes;
+
+
+	queue->submit_task(&block);
+
+	while(true){
+
+		//printf("Stalling!\n");
+
+		if (queue->task_done(taskID)) break;
+	}
+
+	printf("Task %llu returned done from queue!\n", taskID);
+
+
+
+}
+
+
+template <typename Key, typename Val = empty, template<typename T> typename Wrapper = empty_wrapper>
+struct __attribute__ ((__packed__)) tcqf {
+
+	templated_vqf<Key, Val, Wrapper> * dev_vqf;
+
+	uint64_t num_blocks;
+
+	uint64_t num_teams;
+
+	uint64_t current_queue_id;
+
+	cuda_queue<key_val_pair<Key, Val, Wrapper>> * internal_queue;
+
+	submission_block<key_val_pair<Key, Val, Wrapper>> * queue_head;
+
+	submission_block<key_val_pair<Key, Val, Wrapper>> * pinned_host_block;
+
+	cudaStream_t persistent_stream;
+
+	cudaStream_t submit_stream;
+
+
+	__host__ void bulk_insert(uint64_t * misses){
+
+		dev_vqf->bulk_insert(misses, num_teams);
+
+	}
+
+	__host__ void attach_lossy_buffers(uint64_t * reference_vals, key_val_pair<Key, Val, Wrapper> * vals, uint64_t nvals){
+
+		dev_vqf->attach_lossy_buffers(reference_vals, vals, nvals, num_blocks);
+	}
+
+	__host__ void bulk_query(bool * hits){
+
+
+		dev_vqf->bulk_query(hits, num_teams);
+	}
+
+	//booting up resets current queue id
+	__host__ void boot_up(){
+
+		current_queue_id = 1;
+
+		printf("Starting up! Wiping queue\n");
+
+		prep_queue<key_val_pair<Key, Val, Wrapper>><<<1,1,0,persistent_stream>>>(internal_queue);
+
+		persistent_kernel<templated_vqf<Key, Val, Wrapper>, key_val_pair<Key, Val, Wrapper>><<<num_teams, BLOCK_SIZE, 0, persistent_stream>>>(dev_vqf, internal_queue);
+
+
+	}
+
+	__host__ void submit_task_and_stall(int task_type, key_val_pair<Key, Val, Wrapper> ** buffers, int * buffer_sizes){
+
+
+		printf("Submitting task %d\n", current_queue_id);
+		submit_task_and_wait<key_val_pair<Key, Val, Wrapper>><<<1,1,0, submit_stream>>>(internal_queue, current_queue_id, task_type, buffers, buffer_sizes);
+
+		current_queue_id+=1;
+
+		cudaStreamSynchronize(submit_stream);
+
+	}
+
+	__host__ void shut_down(){
+
+		printf("Sending kill submission\n");
+		//submit_task_and_stall(0, nullptr, nullptr);
+		submit_task_via_memcpy(0, nullptr, nullptr);
+		
+
+
+	}
+
+
+	__host__ void prep_insert(uint64_t nitems, uint64_t * items, key_val_pair<Key, Val, Wrapper> * keys, key_val_pair<Key, Val, Wrapper> ** buffers, int * buffer_sizes){
+
+		hash_all_key_purge<templated_vqf<Key, Val, Wrapper>, key_val_pair<Key, Val, Wrapper>><<<(nitems -1)/1024 + 1, 1024, 0, submit_stream>>>(dev_vqf, items, keys, nitems);
+
+
+		thrust::sort_by_key(thrust::cuda::par.on(submit_stream), items, items+nitems, keys);
+
+
+		set_buffers_binary_external<templated_vqf<Key, Val, Wrapper>, key_val_pair<Key, Val, Wrapper>><<<(num_blocks -1)/1024+1, 1024, 0, submit_stream>>>(dev_vqf, buffers, items, keys, nitems);
+
+		set_buffer_lens_external<templated_vqf<Key, Val, Wrapper>, key_val_pair<Key, Val, Wrapper>><<<(num_blocks -1)/1024+1, 1024, 0 , submit_stream>>>(buffers, buffer_sizes, nitems, keys, num_blocks);
+
+		cudaStreamSynchronize(submit_stream);
+	}
+
+	__host__ void submit_insert_only(uint64_t nitems, uint64_t * items, key_val_pair<Key, Val, Wrapper> * keys, key_val_pair<Key, Val, Wrapper> ** buffers, int * buffer_sizes){
+
+				submit_task_via_memcpy(1, buffers, buffer_sizes);
+	}
+
+	__host__ void submit_insert(uint64_t nitems, uint64_t * items, key_val_pair<Key, Val, Wrapper> * keys, key_val_pair<Key, Val, Wrapper> ** buffers, int * buffer_sizes){
+
+
+		printf("Submitting insert\n");
+		hash_all_key_purge<templated_vqf<Key, Val, Wrapper>, key_val_pair<Key, Val, Wrapper>><<<(nitems -1)/1024 + 1, 1024, 0, submit_stream>>>(dev_vqf, items, keys, nitems);
+
+
+		thrust::sort_by_key(thrust::cuda::par.on(submit_stream), items, items+nitems, keys);
+
+
+		set_buffers_binary_external<templated_vqf<Key, Val, Wrapper>, key_val_pair<Key, Val, Wrapper>><<<(num_blocks -1)/1024+1, 1024, 0, submit_stream>>>(dev_vqf, buffers, items, keys, nitems);
+
+		set_buffer_lens_external<templated_vqf<Key, Val, Wrapper>, key_val_pair<Key, Val, Wrapper>><<<(num_blocks -1)/1024+1, 1024, 0 , submit_stream>>>(buffers, buffer_sizes, nitems, keys, num_blocks);
+
+
+		submit_task_via_memcpy(1, buffers, buffer_sizes);
+
+		cudaStreamSynchronize(submit_stream);
+
+	}
+
+
+	__host__ void submit_task_via_memcpy(int task_type, key_val_pair<Key, Val, Wrapper> ** buffers, int * buffer_sizes){
+
+
+		submission_block<key_val_pair<Key, Val, Wrapper>> * block = pinned_host_block;
+
+
+		
+
+
+		//cudaMallocHost((void **)& block, sizeof(submission_block<key_val_pair<Key, Val, Wrapper>>));
+
+		block[0].submissionID = current_queue_id;
+		block[0].submission_type = task_type;
+		block[0].buffers = buffers;
+		block[0].buffer_sizes = buffer_sizes;
+		block[0].work_done = false;
+
+		
+
+	
+
+		//max queue size is currently 10
+		int slot_to_submit = current_queue_id % 10;
+
+
+		//submission_block<key_val_pair<Key, Val, Wrapper>> ** head;
+
+
+		//get_queue_head<key_val_pair<Key, Val, Wrapper>><<<1,1,0,submit_stream>>>(internal_queue, &head);
+
+
+		//cudaStreamSynchronize(submit_stream);
+		cudaMemcpyAsync(queue_head + slot_to_submit, block, sizeof(submission_block<key_val_pair<Key, Val, Wrapper>>), cudaMemcpyHostToDevice, submit_stream);
+
+		//cudaFreeHost(block);
+
+		current_queue_id+=1;
+
+	}
+
+};
+
+
+
+
+template <typename Key, typename Val = empty, template<typename T> typename Wrapper = empty_wrapper >
+__host__ tcqf<Key, Val, Wrapper> * build_vqf(uint64_t nitems){
+
+
+	tcqf<Key, Val, Wrapper> * host_vqf;
+
+
+	cudaMallocHost((void **)& host_vqf, sizeof(tcqf<Key, Val, Wrapper>));
+
+	host_vqf->dev_vqf = build_internal_vqf<Key, Val, Wrapper>(nitems);
+
+	host_vqf->num_blocks = host_vqf->dev_vqf->get_num_blocks();
+
+	host_vqf->num_teams = host_vqf->dev_vqf->get_num_teams();
+
+	host_vqf->internal_queue = build_queue<key_val_pair<Key, Val, Wrapper>>((uint64_t) 10);
+
+	host_vqf->queue_head = get_queue_head<key_val_pair<Key,Val,Wrapper>>(host_vqf->internal_queue);
+
+	submission_block<key_val_pair<Key, Val, Wrapper>> * pinned_host_block;
+
+	cudaMallocHost((void **)& pinned_host_block, sizeof(submission_block<key_val_pair<Key, Val, Wrapper>>));
+
+	host_vqf->pinned_host_block = pinned_host_block;
+	//cudaStreamCreate(&host_vqf->persistent_stream);
+
+	int priority_high, priority_low;
+  	cudaDeviceGetStreamPriorityRange(&priority_low, &priority_high);
+
+	cudaStreamCreateWithPriority (&host_vqf->persistent_stream, cudaStreamDefault, priority_low);
+	//cudaStreamCreate(&host_vqf->submit_stream);
+
+	cudaStreamCreateWithPriority (&host_vqf->submit_stream, cudaStreamDefault, priority_high);
+
+
+	return host_vqf;
+
+}
+
+template <typename Key, typename Val = empty, template<typename T> typename Wrapper = empty_wrapper >
+__host__ void free_vqf(tcqf<Key, Val, Wrapper> * host_vqf){
+
+
+
+	//free queue here
+
+	free_queue(host_vqf->internal_queue);
+
+	free_internal_vqf(host_vqf->dev_vqf);
+
+
+	cudaStreamDestroy(host_vqf->persistent_stream);
+	cudaStreamDestroy(host_vqf->submit_stream);
+
+	cudaFreeHost(host_vqf->pinned_host_block);
+
+	cudaFreeHost(host_vqf);
+
+}
 
 #endif //GPU_BLOCK_

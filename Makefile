@@ -1,4 +1,4 @@
-TARGETS=batched_template_tests templated_test
+TARGETS=batched_template_tests const_batched_template_tests batched_vqf_tests
 
 ifdef D
 	DEBUG=-g -G
@@ -25,7 +25,7 @@ OBJDIR=obj
 
 
 
-CC = gcc -std=gnu11
+CC = gcc
 CXX = g++ -std=c++20
 CU = nvcc -dc -x cu
 LD = nvcc
@@ -172,6 +172,16 @@ templated_test:					$(OBJDIR)/templated_test.o \
 								$(OBJDIR)/hashutil.o
 
 batched_template_tests:			$(OBJDIR)/batched_template_tests.o \
+								$(OBJDIR)/hashutil.o
+
+persistent_batched_template_tests:			$(OBJDIR)/persistent_batched_template_tests.o \
+								$(OBJDIR)/hashutil.o
+
+
+cuda_queue_tests:				$(OBJDIR)/cuda_queue_tests.o
+
+
+const_batched_template_tests:			$(OBJDIR)/const_batched_template_tests.o \
 								$(OBJDIR)/hashutil.o
 # dependencies between .o files and .cc (or .c) files
 
