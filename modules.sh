@@ -1,11 +1,8 @@
-module swap PrgEnv-intel PrgEnv-gnu
+module purge
 module load cgpu
-module load pgi
-module load cmake
-module load cuda
-module load openmpi
-module load boost
-module load python
+module load PrgEnv-gnu
+module load cmake/3.22.2
+module load cuda/11.4.0
 module load nsight-systems
 module load nsight-compute
 module unload gcc
