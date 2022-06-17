@@ -52,7 +52,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
 
 set(POGGERS_TESTS_BINARY_DIR "${CMAKE_BINARY_DIR}/tests")
 
-option(POGGERS_BUILD_TESTS "Configure CMake to build tests" ON)
+option(POGGERS_BUILD_TESTS "Configure CMake to build tests" OFF)
 
 if(POGGERS_BUILD_TESTS)
     add_subdirectory(tests)
