@@ -67,7 +67,7 @@ struct  key_val_pair {
 
 	public:
 
-		__host__ __device__ static const Key get_empty(){ return Key{0}; }
+		__host__ __device__ static inline const Key get_empty(){ return Key{0}; }
 
 		Key key;
 
@@ -96,6 +96,10 @@ struct  key_val_pair {
 			return (key == get_empty());
 		}
 
+		__host__ __device__ inline static const Key get_tombstone(){
+			return get_empty()-1;
+		}
+
 		__host__ __device__ inline bool contains(Key ext_key){
 			return (key == ext_key);
 		}
@@ -112,7 +116,7 @@ struct  key_val_pair {
 
 		__device__ __inline__ bool atomic_reset(Key const ext_key){
 
-			if (poggers::helpers::typed_atomic_write(&key, ext_key, get_empty())){
+			if (poggers::helpers::typed_atomic_write(&key, ext_key, get_tombstone())){
 				return true;
 			}
 

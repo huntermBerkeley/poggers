@@ -72,9 +72,13 @@ struct  shortened_bitmask_key_val_pair {
 			key = get_empty();
 		}
 
+		__host__ __device__ inline static const SmallKey get_tombstone(){
+			return get_empty()-1;
+		}
+
 		__device__ __inline__ bool atomic_reset(Key const ext_key){
 
-			if (poggers::helpers::typed_atomic_write(&key, get_smallKey(ext_key), get_empty())){
+			if (poggers::helpers::typed_atomic_write(&key, get_smallKey(ext_key), get_tombstone())){
 				return true;
 			}
 
