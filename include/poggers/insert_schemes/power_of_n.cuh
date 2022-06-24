@@ -228,6 +228,70 @@ public:
 
 	}
 
+	__device__ __inline__ bool remove_from_bucket(cg::thread_block_tile<Partition_Size> insert_tile, Key key, uint64_t insert_slot){
+
+
+			//if (insert_tile.thread_rank() == 0) printf("In query!\n");
+
+       		insert_slot = insert_slot*Bucket_Size;// + insert_tile.thread_rank();
+
+       		//printf("checking_for_slot\n");
+
+       		for (int i = insert_tile.thread_rank(); i < Bucket_Size; i+= Partition_Size){
+
+
+       			uint64_t my_insert_slot = insert_slot + i;
+     
+
+
+	       		bool ballot = false;
+
+	       		if (slots[my_insert_slot].contains(key)){
+	       			ballot = true;
+	       		}
+
+	       		auto ballot_result = insert_tile.ballot(ballot);
+
+	       		while (ballot_result){
+
+	       			const auto leader = __ffs(ballot_result)-1;
+
+	       			if (leader == insert_tile.thread_rank()){
+	       				if (slots[my_insert_slot].atomic_reset(key)){
+	       					insert_tile.ballot(true);
+
+	       					return true;
+	       				} 
+
+	       				
+	       				//on failure, ballot
+	       				insert_tile.ballot(false);
+
+	       			
+
+
+
+	       			} else {
+
+	       				//if leader succeeds return
+	       				if (insert_tile.ballot(false)){
+	       					return true;
+	       				}
+	       			}
+
+	       			//if we made it here no successes, decrement leader
+	       			ballot_result  ^= 1UL << leader;
+
+	       		}
+		       		
+
+	       	}
+
+
+     		return false;
+
+	}
+
 	__device__ __inline__ int check_fill_bucket(cg::thread_block_tile<Partition_Size> insert_tile, Key key, Val val, uint64_t insert_slot){
 
 
@@ -373,6 +437,39 @@ public:
        		
 
 			if (query_into_bucket(insert_tile, key, ext_val, insert_slot)){
+
+				//if (insert_tile.thread_rank() == 0) printf("Found in %llu!\n", insert_slot);
+				return true;
+			}
+     	
+
+		}
+
+		//if (insert_tile.thread_rank() == 0) printf("Could not find %d\n", key);
+
+		return false;
+
+
+	}
+
+	__device__ __inline__ bool remove(cg::thread_block_tile<Partition_Size> insert_tile, Key key){
+
+		//first step is to init probing scheme
+
+		//if (insert_tile.thread_rank() == 0) printf("Starting outer query!\n");
+
+
+		probing_scheme_type insert_probing_scheme(seed);
+
+		for (uint64_t insert_slot = insert_probing_scheme.begin(key); insert_slot != insert_probing_scheme.end(); insert_slot = insert_probing_scheme.next()){
+
+       			
+       		insert_slot = insert_slot % num_buckets;
+
+
+       		
+
+			if (remove_from_bucket(insert_tile, key, insert_slot)){
 
 				//if (insert_tile.thread_rank() == 0) printf("Found in %llu!\n", insert_slot);
 				return true;

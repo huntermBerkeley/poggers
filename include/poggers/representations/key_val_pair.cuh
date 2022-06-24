@@ -104,6 +104,22 @@ struct  key_val_pair {
 			return val;
 		}
 
+		__host__ __device__ inline void reset(){
+
+			key = get_empty();
+
+		}
+
+		__device__ __inline__ bool atomic_reset(Key const ext_key){
+
+			if (poggers::helpers::typed_atomic_write(&key, ext_key, get_empty())){
+				return true;
+			}
+
+			return false;
+
+		}
+
 		
 
 };

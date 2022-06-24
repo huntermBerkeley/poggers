@@ -178,10 +178,12 @@ public:
 				return secondary_table->insert(Insert_tile, key, val);
 			}
 
+			
 			return false;
 
-
 		}
+
+		
 
 	}
 
@@ -195,10 +197,30 @@ public:
 				return secondary_table->query(Insert_tile, key, val);
 			}
 
+			
 			return false;
 
-
 		}
+
+		
+
+	}
+
+	__device__ bool remove(cg::thread_block_tile<Partition_Size> Insert_tile, Key key){
+
+		if (my_insert_scheme->remove(Insert_tile, key)){
+			return true;
+		} else {
+
+			if (Is_Recursive){
+				return secondary_table->remove(Insert_tile, key);
+			}
+
+			return false;
+		}
+
+
+
 
 	}
 

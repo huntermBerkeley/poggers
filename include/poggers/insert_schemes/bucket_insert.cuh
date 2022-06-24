@@ -202,6 +202,96 @@ public:
 
 	}
 
+	__device__ __inline__ bool remove(cg::thread_block_tile<Partition_Size> insert_tile, Key key){
+
+		//first step is to init probing scheme
+
+
+
+		probing_scheme_type insert_probing_scheme(seed);
+
+		for (uint64_t insert_slot = insert_probing_scheme.begin(key); insert_slot != insert_probing_scheme.end(); insert_slot = insert_probing_scheme.next()){
+
+       		insert_slot = insert_slot % num_buckets;
+
+       		insert_slot = insert_slot*Bucket_Size;
+
+       		bool bucket_empty = false;
+
+
+       		for (int i = insert_tile.thread_rank(); i < Bucket_Size; i+=Partition_Size){
+
+       			uint64_t my_insert_slot = insert_slot+i;
+    
+
+       	
+
+	       		//printf("checking_for_slot\n");
+
+	       		bool ballot = false;
+
+	       		if (slots[my_insert_slot].contains(key)){
+	       			ballot = true;
+	       		} else if (slots[my_insert_slot].is_empty()){
+	       			bucket_empty = true;
+	       		}
+
+
+       			auto ballot_result = insert_tile.ballot(ballot);
+
+       		
+
+
+	       		while (ballot_result){
+
+	       			const auto leader = __ffs(ballot_result)-1;
+
+	       			if (leader == insert_tile.thread_rank()){
+	       				if (slots[my_insert_slot].atomic_reset(key)){
+	       					insert_tile.ballot(true);
+
+	       					return true;
+	       				} 
+
+	       				
+	       				//on failure, ballot
+	       				insert_tile.ballot(false);
+
+	       			
+
+
+
+	       			} else {
+
+	       				//if leader succeeds return
+	       				if (insert_tile.ballot(false)){
+	       					return true;
+	       				}
+	       			}
+
+	       			//if we made it here no successes, decrement leader
+	       			ballot_result  ^= 1UL << leader;
+
+	       		}
+
+
+	       		}
+
+
+	       		//ballot here on empty
+
+	       		if (insert_tile.ballot(bucket_empty)){
+	       			return false;
+	       		}
+
+	       	}
+
+
+
+	     	return false;
+
+	}
+
 	__device__ __inline__ bool query(cg::thread_block_tile<Partition_Size> insert_tile, Key key, Val& ext_val){
 
 		//first step is to init probing scheme
