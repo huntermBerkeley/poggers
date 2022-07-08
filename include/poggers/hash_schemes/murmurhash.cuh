@@ -83,6 +83,7 @@ public:
 
 	//init happens by a single thread on CPU/GPU
 	//no cg needed
+
 	__host__ __device__ void init(uint64_t ext_seed){	
 
 		seed = ext_seed;

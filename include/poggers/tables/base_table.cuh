@@ -187,6 +187,15 @@ public:
 
 	}
 
+	//inserting from empty does nothing
+	__device__ bool insert(cg::thread_block_tile<Partition_Size> Insert_tile, Key key){
+
+		Val alt_val = 0;
+		return insert(Insert_tile, key, alt_val);
+
+	}
+
+
 	__device__ bool query(cg::thread_block_tile<Partition_Size> Insert_tile, Key key, Val & val){
 
 		if (my_insert_scheme->query(Insert_tile, key, val)){

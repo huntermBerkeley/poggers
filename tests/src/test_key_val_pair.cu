@@ -12,6 +12,9 @@
 
 #include <poggers/representations/key_val_pair.cuh>
 
+#include <poggers/representations/dynamic_container.cuh>
+#include <poggers/representations/key_only.cuh>
+
 #include <stdio.h>
 #include <iostream>
 
@@ -145,6 +148,15 @@ int main(int argc, char** argv) {
 
    test_big_with_malloced<<<1,1>>>(big_test);
 
+   using smallkeytype = dynamic_container<key_val_pair, uint16_t>::representation<uint64_t, uint16_t>;
+
+
+   smallkeytype test_smallkey;
+
+
+   using smallkeyonly = dynamic_container<key_container, uint16_t>::representation<uint64_t, uint16_t>;
+
+   smallkeyonly test_smallkeyonly;
 
    //test_key_val_pair<<<100,100>>>();
 

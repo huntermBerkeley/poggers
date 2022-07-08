@@ -12,6 +12,8 @@ ConfigureExecutable(kmer_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/kmer_tests.cu" "
 
 ConfigureExecutable(power_2_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/power_2_tests.cu" "${POGGERS_TESTS_BINARY_DIR}")
 
+ConfigureExecutable(allocator_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/allocator_tests.cu" "${POGGERS_TESTS_BINARY_DIR}")
+
 #ConfigureExecutable(separable_test "${CMAKE_CURRENT_SOURCE_DIR}/src/separable_test.cpp" "${POGGERS_TESTS_BINARY_DIR}")
 
 #set_target_properties(separable_test PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
