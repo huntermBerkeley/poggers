@@ -438,12 +438,9 @@ __device__ inline bool replace_uint16(uint16_t * address, uint16_t expected, uin
 
 		uint16_t desired_mask = desired & mask; 
 
-		//it's ok if desired mask is 0, set a 1 bit somewhere else
-		//if (desired_mask == 0) desired_mask = desired;
-
-
-
 		uint16_t desired_read = desired_mask | read_from_address;
+
+
 
 		uint16_t result = typed_atomic_CAS<uint16_t>(address, expected_read, desired_read);
 
@@ -599,21 +596,28 @@ __device__ inline bool match_first(uint16_t * address, uint16_t item){
 
 __device__ inline bool match_second(uint16_t * address, uint16_t item){
 
-	uint16_t first_mask = (1U << 4)-1;
+	uint16_t first_mask = (1ULL << 4)-1;
 
 	first_mask = first_mask << 12;
 
-	uint16_t second_mask = (1U << 8) -1;
+	uint16_t second_mask = (1ULL << 8) -1;
 
 	uint16_t ret_val = 0;
 
 	//address[0] & mask;
+	//00...0111
 	ret_val |= read_uint16(address, first_mask);
 	ret_val |= read_uint16(address+1, second_mask);
 
+
 	uint16_t masked_item = (item & first_mask) | (item & second_mask);
 
-	if (masked_item == 0) masked_item++;
+	if (item & first_mask == 0){
+		masked_item |= (1ULL << 12);
+	}
+	//uint16_t masked_item = item_mask & item;
+
+	//if (masked_item == 0) m;
 
 	return (ret_val == masked_item);
 
@@ -634,7 +638,9 @@ __device__ inline bool match_third(uint16_t * address, uint16_t item){
 
 	uint16_t masked_item = (item & first_mask) | (item & second_mask);
 
-	if (masked_item == 0) masked_item++;
+	if (item & first_mask == 0){
+		masked_item |= (1ULL << 8);
+	}
 
 	return (ret_val == masked_item);
 
@@ -649,7 +655,7 @@ __device__ inline bool match_fourth(uint16_t * address, uint16_t item){
 
 	uint16_t masked_item = item & mask;
 
-	if (masked_item == 0) masked_item+=(1ULL << 4);
+	if (masked_item == 0) masked_item |= (1ULL << 4);
 
 	return (masked_item == read_uint16(address+2, mask));
 
@@ -670,7 +676,11 @@ __device__ inline bool replace_first(uint16_t * address, uint16_t expected, uint
 		desired++;
 		assert((desired & mask) == 1);
 
+
+
 	} 
+
+	// desired = desired | 1ULL;
 
 	return replace_uint16(address, expected, desired, mask);
 
@@ -688,21 +698,18 @@ __device__ inline bool replace_second(uint16_t * address, uint16_t expected, uin
 
 	uint16_t second_mask = (1ULL << 8)-1;
 
+	//if upper 4 are 0 set one bit
+	if (desired & first_mask == 0){
 
-	if (((desired & first_mask) | (desired & second_mask)) == 0){
+		desired |= (1ULL << 12);
 
-		desired++;
-		assert(((desired & first_mask) | (desired & second_mask)) == 1);
-
-	} 
+	}
 
 
-	if (replace_uint16(address+1, expected, desired, second_mask)){
+	if (replace_uint16(address, expected, desired, first_mask)){
 
-		assert(replace_uint16(address, expected, desired, first_mask));
 
-		//we do some shuffle storage, doesn't really matter?
-		//I think it's okay since was always cast from a larger value
+		assert(replace_uint16(address+1, expected, desired, second_mask));
 		
 
 		return true;
@@ -719,25 +726,23 @@ __device__ inline bool replace_third(uint16_t * address, uint16_t expected, uint
 
 	uint16_t first_mask = (1ULL << 8)-1;
 
-	//bitshift up 12  
+	//bitshift up 8
 	first_mask = first_mask << 8;
 
 	uint16_t second_mask = (1ULL << 4)-1;
 
-	if (((desired & first_mask) | (desired & second_mask)) == 0){
 
-		desired++;
-		assert(((desired & first_mask) | (desired & second_mask)) == 1);
 
-	} 
+	if (desired & first_mask == 0){
 
-	if (replace_uint16(address+2, expected, desired, second_mask)){
+		desired |= (1ULL << 8);
 
-		//we do some shuffle storage, doesn't really matter?
-		//I think it's okay since was always cast from a larger value
-		
+	}
 
-		assert(replace_uint16(address+1, expected, desired, first_mask));
+	if (replace_uint16(address+1, expected, desired, first_mask)){
+
+
+		assert(replace_uint16(address+2, expected, desired, second_mask));
 
 		return true;
 
@@ -757,7 +762,7 @@ __device__ inline bool replace_fourth(uint16_t * address, uint16_t expected, uin
 
 	if ((desired & mask) == 0){
 
-		desired+=(1ULL<<4);
+		desired |= (1ULL<<4);
 		assert((desired & mask) == (1ULL<<4));
 
 	} 

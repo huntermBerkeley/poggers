@@ -443,7 +443,7 @@ __global__ void test_block(bucket_type * bucket){
    bucket->full_reset(insert_tile);
 
 
-   for (uint64_t i = 0; i < 1000; i++){
+   for (uint64_t i = 0; i < 10; i++){
 
       for (uint64_t j = 0; j < 16; j++){
 
@@ -580,7 +580,7 @@ __global__ void test_block_secondary(bucket_type * bucket){
             uint16_t ext_val = 0;
             if (!bucket->query(insert_tile, key, ext_val)){
 
-               printf("Query Problem: %llu, %llu\n", i, j);
+               printf("Second Query Problem: %llu, %llu\n", i, j);
                bucket->query(insert_tile, key, ext_val);
 
             }
@@ -600,7 +600,7 @@ __global__ void test_block_secondary(bucket_type * bucket){
 
          if (!bucket->query(insert_tile, key, ext_val)){
 
-               printf("Query Problem: %llu, %llu\n", i, j);
+               printf("Second Seconed Query Problem: %llu, %llu\n", i, j);
                bucket->query(insert_tile, key, ext_val);
 
          }
