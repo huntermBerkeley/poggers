@@ -6,20 +6,30 @@
 #include <cuda_runtime_api.h>
 #include <variant>
 
-#include <poggers/allocators/superblock.cuh>
-#include <poggers/allocators/base_heap_ptr>
+#include <stdio.h>
+
+#include "assert.h"
+
+// #include <poggers/allocators/superblock.cuh>
+// #include <poggers/allocators/base_heap_ptr>
 
 
 #ifndef DEBUG_ASSERTS
 #define DEBUG_ASSERTS 1
 #endif
 
+#ifndef DEBUG_PRINTS
+#define DEBUG_PRINTS 1
+#endif
 
-#define LOCK_MASK = (1ULL << 63);
-#define ALLOCED_MASK = (1ULL << 62);
-#define ENDPOINT_MASK = (1ULL << 63);
 
-#define CUTOFF_SIZE 1024
+#define LOCK_MASK (1ULL << 63)
+#define ALLOCED_MASK (1ULL << 62)
+#define ENDPOINT_MASK (1ULL << 61)
+
+
+//define CUTOFF_SIZE 1024
+#define CUTOFF_SIZE 4
 
 // struct __attribute__ ((__packed__)) val_storage {
 	
@@ -62,26 +72,34 @@ struct header_lock_dist {
 	//2: endpoint
 
 
-	uint16_t lock : 3;
+	
 	uint64_t size : 61;
 
-}
+	uint16_t lock : 3;
+
+};
 
 union header_bitfield {
 
-	header_lock_dist as_fields;
+	header_lock_dist as_bitfield;
 
 	uint64_t as_uint;
 
 	__device__ bool lock(){
 
-		return !(atomicOR(&this, LOCK_MASK) & LOCK_MASK);
+
+		uint64_t old = atomicOr((unsigned long long int *) this, LOCK_MASK);
+
+		old = old & LOCK_MASK;
+
+		return !old;
+		
 
 	}
 
 	__device__ void unlock(){
 
-		atomicAND(&lock_and_size, ~LOCK_MASK);
+		atomicAnd((unsigned long long int *)this, ~LOCK_MASK);
 
 		return;
 	}
@@ -95,7 +113,7 @@ struct atomicLock{
 
 	header_bitfield * header_to_lock;
 
-	inline atomicLock(header_bitfield * ext_bitfield){
+	__device__ inline atomicLock(header_bitfield * ext_bitfield){
 
 		header_to_lock = ext_bitfield;
 
@@ -103,11 +121,23 @@ struct atomicLock{
 
 	}
 
-	inline ~atomicLock(){
+	__device__ inline ~atomicLock(){
 
 		 header_to_lock->unlock();
 
 	}
+
+};
+
+template <typename header>
+__global__ void init_heap_kernel(void * allocation, uint64_t num_bytes){
+
+
+	uint64_t tid = threadIdx.x+blockIdx.x*blockDim.x;
+
+	if (tid != 0) return;
+
+	header::init_heap_global(allocation, num_bytes);
 
 }
 
@@ -115,8 +145,8 @@ struct header{
 
 	header_bitfield lock_and_size;
 	uint64_t empty;
-	header * next;
-	header * prev;
+	header * next_ptr;
+	header * prev_ptr;
 
 
 	__device__ bool lock(){
@@ -128,7 +158,18 @@ struct header{
 
 	__device__ void stall_lock(){
 
-		while (!header_to_lock=>lock());
+		while (!lock_and_size.lock());
+
+	}
+
+	__device__ void stall_lock_verbose(){
+
+		while (!lock_and_size.lock()){
+
+			uint64_t tid =threadIdx.x+blockIdx.x*blockDim.x;
+			printf("%llu stalled locking %p\n", tid, this);
+
+		}
 
 	}
 
@@ -139,27 +180,31 @@ struct header{
 
 	}
 
-	__device__ header_bitfield atomic_get(){
+	__device__ uint64_t atomic_get(){
 
-		return atomicOR(&lock_and_size, 0);
+		header_bitfield * address_of_lock = &lock_and_size;
+
+		return atomicOr((unsigned long long int *) address_of_lock, 0ULL);
 	}
 
 
-	__device__ bool alloc(){
+	__device__ void alloc(){
 
-		return atomicOR(&lock_and_size, ALLOCED_MASK);
+		atomicOr((unsigned long long int *) (&lock_and_size), ALLOCED_MASK);
+		return;
 	}
 
-	__device__ bool dealloc(){
+	__device__ void dealloc(){
 
-		return atomicAND(&lock_and_size, ~ALLOCED_MASK);
+		atomicAnd((unsigned long long int *)(&lock_and_size), ~ALLOCED_MASK);
+		return;
 	}
 
 
-	__device__ bool replace(header_bitfield old, header_bitfield new){
+	__device__ bool replace(header_bitfield old, header_bitfield new_status){
 
 
-		return (atomicCAS(&lock_and_size, old.as_uint, new_status.as_uint) == old.as_uint);
+		return (atomicCAS((unsigned long long int *)(&lock_and_size), old.as_uint, new_status.as_uint) == old.as_uint);
 
 	}
 
@@ -168,6 +213,10 @@ struct header{
 
 		return atomic_get() & ALLOCED_MASK;
 
+	}
+
+	__device__ bool check_lock(){
+		return atomic_get() & LOCK_MASK;
 	}
 
 	__device__ bool check_endpoint(){
@@ -179,7 +228,7 @@ struct header{
 	__device__ void set_size(uint64_t new_size){
 
 		lock_and_size.as_bitfield.size = new_size;
-		return 
+		return;
 	}
 
 	__device__ uint64_t get_size(){
@@ -187,40 +236,75 @@ struct header{
 	}
 
 	__device__ void set_next(header * next_node){
-		next = next_node;
+		next_ptr = next_node;
 	}
 
 	__device__ void set_prev(header * prev_node){
-		prev = prev_node;
+		prev_ptr = prev_node;
 	}
 
 
-	__device__ header * get_next(){
-		return next;
+	__host__ __device__ header * get_next(){
+		return next_ptr;
 	}
 
-	__device__ header * get_prev(){
-		return prev;
+	__host__ __device__ header * get_prev(){
+		return prev_ptr;
 	}
 
-	__device__ header * init_node(void * allocation, uint64_t num_bytes){
+	__device__ static header * init_node(void * allocation, uint64_t num_bytes){
 
 		header * node = (header *) allocation;
+
+
 
 		node->lock_and_size.as_bitfield.lock = 0;
 		node->lock_and_size.as_bitfield.size = num_bytes;
 
+		printf("Size %llu\n", node->lock_and_size.as_bitfield.size);
 
 		return node;
 
 	}
 
 
-	__device__ void init_heap(void * allocation, uint64_t num_bytes){
+ 	__device__ void printnode(){
 
-		header * heap_start = init_node(allocation, 32);
-		header * main_node = init_node(allocation+32, num_bytes-64);
-		header * heap_end = init_node(allocation+num_bytes-32, 32);
+ 		uint64_t tid = threadIdx.x + blockIdx.x*blockDim.x;
+		printf("%llu: Node at %p, size is %llu, next at %p, prev at %p, is head: %d, is_locked: %d, is alloced: %d\n", tid, this, lock_and_size.as_bitfield.size, get_next(), get_prev(), check_endpoint(), check_lock(), check_alloc());
+	}
+
+
+	__host__ static header * init_heap(uint64_t num_bytes){
+
+		void * allocation;
+
+		cudaMalloc((void **)&allocation, num_bytes);
+
+		init_heap_kernel<header><<<1,1>>>(allocation, num_bytes);
+
+		return (header *) allocation;
+
+	}
+
+	__host__ static void free_heap(header * heap){
+
+		void * allocation = (void *) heap;
+
+		cudaFree(allocation);
+
+	}
+
+
+	__device__ void static init_heap_global(void * unsigned_allocation, uint64_t num_bytes){
+
+
+		char * allocation = (char *) unsigned_allocation;
+
+		header * heap_start = header::init_node(allocation, 32);
+		header * main_node = header::init_node(allocation+32, num_bytes-64);
+		header * heap_end = header::init_node(allocation+num_bytes-32, 32);
+
 
 		heap_start->lock_and_size.as_uint ^= ENDPOINT_MASK;
 		heap_end->lock_and_size.as_uint ^= ENDPOINT_MASK;
@@ -233,13 +317,19 @@ struct header{
 		main_node->set_prev(heap_start);
 		heap_end->set_prev(main_node);
 
-		return heap_start;
+		printf("%llu, %llu, %llu\n", heap_start->get_size(), main_node->get_size(), heap_end->get_size());
+
+		//header_to_return[0] = heap_start
+
+		heap_start->printnode();
+		main_node->printnode();
+		heap_end->printnode();
 
 
 	}
 
 
-	__device__ void split_non_locking(uint64_t num_bytes){
+	__device__ header * split_non_locking(uint64_t num_bytes){
 
 
 		//atomicLock myLock(&lock_and_size);
@@ -251,20 +341,21 @@ struct header{
 
 		lock_and_size.as_bitfield.size -= num_bytes;
 
-		void * next_address = ((void *) this) + lock_and_size.as_bitfield.size;
+		char * next_address = ((char *) this) + lock_and_size.as_bitfield.size;
 
-		header * new_node = init_node(next_address, num_bytes);
+		header * new_node = init_node((void *) next_address, num_bytes);
+
+		new_node->stall_lock();
 
 		this->set_next(new_node);
 
 		new_node->set_next(next_node);
 
-
 		new_node->set_prev(this);
 
 		next_node->set_prev(new_node);
 
-		return;
+		return new_node;
 
 
 	}
@@ -279,11 +370,11 @@ struct header{
 
 		main->alloc();
 
-		void * address = (void *) main;
+		char * address = (char *) main;
 
 		prev->unlock();
 		next->unlock();
-		return address+32;
+		return (void *) (address+32);
 
 
 	}
@@ -302,9 +393,9 @@ struct header{
 
 		lock_and_size.as_bitfield.size -= num_bytes;
 
-		void * next_address = ((void *) this) + lock_and_size.as_bitfield.size;
+		char * next_address = ((char *) this) + lock_and_size.as_bitfield.size;
 
-		header * new_node = init_node(next_address, num_bytes);
+		header * new_node = init_node((void *) next_address, num_bytes);
 
 		this->set_next(new_node);
 
@@ -340,9 +431,10 @@ struct header{
 	//this is acheived by pointing to the next node
 	__device__ inline header * get_next_disallocated(){
 
-		void * this_void = (void *) this;
+		char * this_void = (char *) this;
 
-		this_void = this_void + num_bytes;
+		this_void = this_void + lock_and_size.as_bitfield.size;
+		//this_void = this_void + sizenum_bytes;
 
 		return (header *) this_void;
 
@@ -353,26 +445,37 @@ struct header{
 
 	//merge two blocks together
 	//assumes already locked
-	__device__ void merge(){
+	__device__ void merge_next(){
 
 
 		#if DEBUG_ASSERTS
 
 		void * this_next = get_next_disallocated();
 
-		void * next = (void *) get_next();
+		void * next_node_int = (void *) get_next();
 
-		assert(this_next == next);
+		assert(this_next == next_node_int);
 
 		assert (get_next()->get_prev() == this);
 
 		#endif
 
-		header * next = get_next();
 
-		next->remove_from_list();
 
-		lock_and_size.as_bitfield.size += next->lock_and_size.as_bitfield.as_bitfield.size;
+
+
+		header * next_node = get_next();
+
+
+		printf("Merging following nodes:\n");
+		printnode();
+		next_node->printnode();
+		printf("End of merge\n");
+
+
+		next_node->remove_from_list();
+
+		lock_and_size.as_bitfield.size += next_node->lock_and_size.as_bitfield.size;
 
 
 	}
@@ -383,27 +486,49 @@ struct header{
 	//find the first node participating in the free list
 	//find next free assume unlocked
 	//returns the head locked
+
+
+	//we want to maintain the lock on this process
+	//this is a bug
+	//also get
+
 	__device__ header * find_next_free(){
 
 
 		//atomicLock head_lock(&lock_and_size);
 
 		//assume head already locked
+		//this should be maintained
+
+		printf("Entering find_next_free\n");
 
 
 		bool alloced = check_alloc();
 		header * head = this;
 		header * new_head;
 
+		#if DEBUG_ASSERTS
+
+		assert(head->check_alloc());
+		assert(head->check_lock());
+
+		#endif
+
 		//head->lock();
 
-		bool alloced = false;
+		// bool alloced = false;
 
-		while (!alloced){
+		while (alloced){
 
-			new_head = head->get_next();
+			new_head = head->get_next_disallocated();
 
-			new_head->lock();
+			printf("Stall lock on new_head\n");
+			new_head->printnode();
+
+			new_head->stall_lock_verbose();
+
+			printf("New head\n");
+			new_head->printnode();
 
 
 			//maintain lock on original node - don't want to free
@@ -411,12 +536,30 @@ struct header{
 				head->unlock();
 			}
 			
+			#if DEBUG_ASSERTS
+			assert(!head->check_alloc())
+			#endif
+
 
 			head = new_head;
 
 			alloced = head->check_alloc();
 
+			#if DEBUG_ASSERTS
+
+			assert(head->check_lock());
+			#endif
+
 		}
+
+		printf("Node returned as next free\n");
+		head->printnode();
+
+		#if DEBUG_ASSERTS
+
+		assert(head.check_lock());
+
+		#endif
 
 		return head;
 
@@ -438,6 +581,7 @@ struct header{
 	__device__ void * find_first_fit(uint64_t num_bytes){
 
 		
+		printf("Starting Malloc_call, looking for %llu bytes\n", num_bytes);
 
 		header * prev = this;
 
@@ -454,20 +598,22 @@ struct header{
 		header * potential_next = next->get_next();
 
 		//do a full loop
-		while (potential_next != this){
+		while (next != this){
 
-			if (main.get_size() >= num_bytes){
+			if (main->get_size() >= num_bytes){
 
 
 				//detach!
 
-				uint64_t leftover = main.get_size() - num_bytes;
+				uint64_t leftover = main->get_size() - num_bytes;
 
 				if (leftover > CUTOFF_SIZE){
 
 					//split
 
-					ideal_node = main->split_non_locking(num_bytes);
+					printf("Malloc call found %llu for %llu needed, splitting\n", main->get_size(), num_bytes);
+
+					header * ideal_node = main->split_non_locking(num_bytes);
 
 					ideal_node->remove_from_list();
 
@@ -475,16 +621,30 @@ struct header{
 					main->unlock();
 					next->unlock();
 
+					ideal_node->alloc();
+					ideal_node->unlock();
+
+					char * ideal_address = ((char *) ideal_node) + 32;
+
+					return (void *) ideal_address;
 
 
 				} else {
 
-					main.remove_from_list();
+					printf("Malloc call found %llu for %llu needed, too small to split\n", main->get_size(), num_bytes);
 
+
+					main->remove_from_list();
+
+					main->alloc();
 
 					prev->unlock();
 					main->unlock();
 					next->unlock();
+
+					char * ideal_address = ((char *) main) + 32;
+
+					return (void *) ideal_address;
 
 
 				}
@@ -514,6 +674,8 @@ struct header{
 
 	}
 
+
+
 	//regular malloc call
 	__device__ void * malloc(uint64_t num_bytes){
 
@@ -530,21 +692,29 @@ struct header{
 	// grab next->next and merge
 	__device__ header * merge_next_node(header * next){
 
+
+		printf("looking at merging:\n");
+		printnode();
+		next->printnode();
+
 		if (get_next_disallocated() == next && !next->check_endpoint()){
 
+			printf("Can merge\n");
 
-			next_next = next->get_next();
+			header * next_next = next->get_next();
 
 			//we get this eventually
 			next_next->stall_lock();
 
-			next->merge();
+			merge_next();
 
-			return next_next();
+			return next_next;
 
 
 
 		}
+
+		printf("Could not merge\n");
 
 		return next;
 
@@ -577,15 +747,27 @@ struct header{
 
 		while (true){
 
+			printf("Stalling here\n");
+
 			header * second = find_next_free();
+
+			printf("Second found:\n");
+			second->printnode();
 
 			//already locked no need
 			//second->stall_lock();
 
 			first = second->get_prev();
 
+			printf("prev found\n");
+			first->printnode();
+
 			if (first->lock()){
+
+				printf("First returned!\n");
 				return first;
+			} else {
+				printf("Lock failed\n");
 			}
 
 			second->unlock();
@@ -594,7 +776,29 @@ struct header{
 
 	}
 
-	__device__ static void free(void * address){
+
+	__device__ static void print_heap(header * head){
+
+		header * loop_ptr = head;
+
+		printf("Current state of free nodes:\n");
+
+		loop_ptr->printnode();
+		loop_ptr = loop_ptr->get_next();
+
+		while (loop_ptr != head){
+			loop_ptr->printnode();
+			loop_ptr = loop_ptr->get_next();
+		}
+
+	}
+
+	__device__ static void free(void * uncasted_address){
+
+		printf("starting Free\n");
+
+		char * address = (char *) uncasted_address;
+
 
 		address -= 32;
 
@@ -602,7 +806,10 @@ struct header{
 
 
 		//declare
-		head->lock();
+		head->stall_lock();
+
+		printf("Node to be freed\n");
+		head->printnode();
 
 		//header * next = head->find_next_free();
 
@@ -610,15 +817,41 @@ struct header{
 
 		header * prev = head->lock_surrounding();
 
+
 		header * next = prev->get_next();
 
-		next->stall_lock();
+		printf("Prev next\n");
+		prev->printnode();
+		next->printnode();
+
+		//next->stall_lock();
+
+		//weave into list
+		prev->set_next(head);
+		head->set_next(next);
+
+		head->set_prev(prev);
+		next->set_prev(head);
+
+
+		printf("Free node list\n");
+		prev->printnode();
+		head->printnode();
+		next->printnode();
+
+		printf("End of nodes in free");
+
 
 		//At this point
 		//head
 		//prev
 		//next
 		// are all locked
+
+		// printf("Before merge\n");
+		// prev->printnode();
+		// head->printnode();
+		// next->printnode();
 
 
 		//we can't merge into head nodes that's illegal
@@ -638,27 +871,60 @@ struct header{
 
 		// }
 
-		next = header->merge_all_left(next);
+		//I own all nodes, turn off
+		head->dealloc();
+
+		next = head->merge_all_left(next);
 
 
 		//at this point, we have prev -> head -> next
 		//all locked
 
 
-		//
+		//after left merge
+		printf("After merging to the right\n");
+		prev->printnode();
+		head->printnode();
+		next->printnode();
+
+		printf("End of after merge");
+
+
 		if (prev->get_next_disallocated() == head && !prev->check_endpoint()){
 
-			head->merge();
+			prev->merge_next();
 
 			//now we have prev_next
+
+			#if DEBUG_ASSERTS
+
+			assert(prev->get_next() == next);
+			assert(next->get_prev() == prev);
+
+			#endif
 
 		} else {
 
 			//or prev -> next -> head;
 			head->unlock();
+
+			#if DEBUG_ASSERTS
+
+			assert(prev->get_next() == head);
+			assert(head->get_next() == next);
+
+			assert(head->get_prev() == prev);
+			assert(next->get_prev() == head);
+
+			#endif
+
 		}
 
 		//finish unlock
+
+
+
+		__threadfence();
 
 		prev->unlock();
 		next->unlock();

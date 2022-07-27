@@ -16,4 +16,8 @@ ConfigureExecutable(allocator_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/allocator_t
 
 #ConfigureExecutable(separable_test "${CMAKE_CURRENT_SOURCE_DIR}/src/separable_test.cpp" "${POGGERS_TESTS_BINARY_DIR}")
 
+ConfigureExecutable(free_list_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/free_list_tests.cu" "${POGGERS_TESTS_BINARY_DIR}")
+
+ConfigureExecutable(bucket_speed_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/bucket_speed_tests.cu" "${POGGERS_TESTS_BINARY_DIR}")
+
 #set_target_properties(separable_test PROPERTIES CUDA_SEPARABLE_COMPILATION ON)

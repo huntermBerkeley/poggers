@@ -33,6 +33,11 @@
 
 #include <poggers/sizing/variadic_sizing.cuh>
 
+#include <poggers/representations/soa.cuh>
+#include <poggers/insert_schemes/power_of_n_shortcut_buckets.cuh>
+
+#include <poggers/tables/bucketed_table.cuh>
+
 #include <stdio.h>
 #include <iostream>
 #include <chrono>
@@ -93,6 +98,9 @@ using iceberg_table = poggers::tables::static_table<uint64_t, uint64_t, poggers:
 using tiny_static_table_4 = poggers::tables::static_table<uint64_t, uint16_t, poggers::representations::shortened_key_val_wrapper<uint16_t>::key_val_pair, 4, 4, poggers::insert_schemes::bucket_insert, 20, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 using tcqf = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::shortened_key_val_wrapper<uint16_t>::key_val_pair, 4, 16, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher, true, tiny_static_table_4>;
 
+
+
+using double_buckets = poggers::tables::bucketed_table<uint64_t, uint64_t, poggers::representations::struct_of_arrays, 4, 16, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
 
 #define gpuErrorCheck(ans) { gpuAssert((ans), __FILE__, __LINE__); }
@@ -610,16 +618,24 @@ int main(int argc, char** argv) {
    // printf("2^28\n");
    // test_speed<table_type, uint64_t, uint64_t>(&first_size_28);
 
-   int nbits = 28;
+   int nbits = 20;
 
-   poggers::sizing::variadic_size test_size_24 (1ULL << nbits, (1ULL << nbits)/100);
+   //poggers::sizing::variadic_size test_size_24 (1ULL << nbits, (1ULL << nbits)/100);
 
-   printf("22 size: %llu\n", test_size_24.total());
-   test_speed_batched<tcqf, uint64_t, uint16_t>("results/test_32", &test_size_24, 20);
+   //printf("22 size: %llu\n", test_size_24.total());
+   //test_speed_batched<tcqf, uint64_t, uint16_t>("results/test_32", &test_size_24, 20);
    // test_speed_batched<tcqf, uint64_t, uint16_t>("results/test_24", generate_size(24), 20);
    // test_speed_batched<tcqf, uint64_t, uint16_t>("results/test_26", generate_size(26), 20);
    // test_speed_batched<tcqf, uint64_t, uint16_t>("results/test_28", generate_size(28), 20);
    // test_speed_batched<tcqf, uint64_t, uint16_t>("results/test_30", generate_size(30), 20);
+
+   cudaDeviceSynchronize();
+
+
+
+   poggers::sizing::size_in_num_slots<1> bucket_size (1ULL<<nbits);
+
+   test_speed_batched<double_buckets, uint64_t,uint64_t>("results/double_buckets", &bucket_size, 20);
 
    cudaDeviceSynchronize();
 
