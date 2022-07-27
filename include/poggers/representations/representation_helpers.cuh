@@ -709,8 +709,9 @@ __device__ inline bool replace_second(uint16_t * address, uint16_t expected, uin
 	if (replace_uint16(address, expected, desired, first_mask)){
 
 
-		assert(replace_uint16(address+1, expected, desired, second_mask));
+		bool replaced = replace_uint16(address+1, expected, desired, second_mask);
 		
+		assert(replaced);
 
 		return true;
 
@@ -741,8 +742,9 @@ __device__ inline bool replace_third(uint16_t * address, uint16_t expected, uint
 
 	if (replace_uint16(address+1, expected, desired, first_mask)){
 
+		bool replaced = replace_uint16(address+2, expected, desired, second_mask);
 
-		assert(replace_uint16(address+2, expected, desired, second_mask));
+		assert(replaced);
 
 		return true;
 
@@ -780,21 +782,23 @@ __device__ inline bool sub_byte_match(uint16_t * address, T item, int index_to_a
 
 	int offset = index_to_access % 4;
 
+	uint16_t short_item = (uint16_t) item
+
 	if (offset == 0){
 
-		return match_first(address_to_check, (uint16_t) item);
+		return match_first(address_to_check, short_item);
 
 	} else if (offset == 1){
 
-		return match_second(address_to_check, (uint16_t) item);
+		return match_second(address_to_check, short_item);
 
 	} else if (offset == 2){
 
-		return match_third(address_to_check, (uint16_t) item);
+		return match_third(address_to_check, short_item);
 
 	} else {
 
-		return match_fourth(address_to_check, (uint16_t) item);
+		return match_fourth(address_to_check, short_item);
 	}
 
 

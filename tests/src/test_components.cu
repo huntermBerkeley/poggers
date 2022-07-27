@@ -451,8 +451,8 @@ __global__ void test_block(bucket_type * bucket){
 
          if (!bucket->insert(insert_tile, key, 0)){
 
-            printf("Insert Problem: %llu, %llu\n", i, j);
-            bucket->insert(insert_tile, key, 0);
+            //printf("Insert Problem: %llu, %llu\n", i, j);
+            //bucket->insert(insert_tile, key, 0);
          } else {
 
             uint16_t ext_val = 0;
@@ -565,7 +565,7 @@ __global__ void test_block_secondary(bucket_type * bucket){
 
    bucket->full_reset(insert_tile);
 
-   for (uint64_t i = 0; i < 1000; i++){
+   for (uint64_t i = 0; i < 10; i++){
 
       for (uint64_t j = 0; j < 16; j++){
 

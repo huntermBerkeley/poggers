@@ -1005,8 +1005,8 @@ int main(int argc, char** argv) {
    
 
    test_tcqf_speed("results/test", 6, 1, true);
-   //test_tcqf_speed("results/test", 20, 20, true);
-   // test_tcqf_speed("results/test", 22, 20, false);
+   test_tcqf_speed("results/test", 20, 20, true);
+   test_tcqf_speed("results/test", 22, 20, false);
    // test_tcqf_speed("results/test", 24, 20, false);
    // test_tcqf_speed("results/test", 26, 20, false);
    // test_tcqf_speed("results/test", 28, 20, false);
