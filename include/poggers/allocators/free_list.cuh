@@ -11,14 +11,14 @@
 
 //a pointer list managing a set section o fdevice memory
 
-#define DEBUG_ASSERTS 1
+// #define DEBUG_ASSERTS 1
 
 #ifndef DEBUG_ASSERTS
-#define DEBUG_ASSERTS 1
+#define DEBUG_ASSERTS 0
 #endif
 
 #ifndef DEBUG_PRINTS
-#define DEBUG_PRINTS 1
+#define DEBUG_PRINTS 0
 #endif
 
 
@@ -112,6 +112,9 @@ __global__ void init_heap_kernel(void * allocation, uint64_t num_bytes){
 
 }
 
+//header alignment
+//32 bytes for main structure
+//16 at end for footer & even spacing
 
 struct header {
 
@@ -272,7 +275,7 @@ struct header {
 		
 		node->lock_and_size.as_bitfield.size = num_bytes;
 
-		printf("Size %llu\n", node->lock_and_size.as_bitfield.size);
+		//printf("Size %llu\n", node->lock_and_size.as_bitfield.size);
 
 		return node;
 
@@ -319,6 +322,7 @@ struct header {
 		main_node->set_prev(heap_start);
 		heap_end->set_prev(main_node);
 
+		#if DEBUG_PRINTS
 		printf("%llu, %llu, %llu\n", heap_start->get_size(), main_node->get_size(), heap_end->get_size());
 
 		//header_to_return[0] = heap_start
@@ -326,6 +330,7 @@ struct header {
 		heap_start->printnode();
 		main_node->printnode();
 		heap_end->printnode();
+		#endif
 
 		heap_start->unlock();
 		main_node->unlock();
@@ -360,7 +365,10 @@ struct header {
 
 	}
 
-
+	//create a new node with num_bytes space
+	//this includes the header / footer in num_bytes, as is convention for this library
+	//not really non locking at the moment [TODO]
+	//so the name is probably confusing if you're not me :D
 	__device__ header * split_non_locking(uint64_t num_bytes){
 
 
@@ -726,176 +734,6 @@ struct header {
 
 	}
 
-	__device__ void free(void * uncasted_address){
-
-		header * head = header::get_header_from_address(uncasted_address);
-
-		header * next;
-
-		header * prev_node;
-
-		//atomicLock()
-		//head->stall_lock();
-
-		while (true){
-
-			while(!lock_node_and_next());
-
-
-			next = get_next();
-
-			head->stall_lock();
-
-			prev_node = head->try_get_prev_node(this, next);
-
-			if (prev_node == nullptr){
-
-				head->unlock();
-
-				next->unlock();
-
-				unlock();
-
-
-			} else {
-
-				break;
-
-			}
-
-
-		}
-
-		#if DEBUG_ASSERTS
-
-		assert(check_lock());
-		assert(next->check_lock());
-
-		#endif
-
-
-		if ((!prev_node->check_alloc()) && (!prev_node->check_endpoint())){
-
-			head->merge(prev_node);
-
-		} else {
-
-
-			this->set_next(head);
-
-			head->set_next(next);
-
-			head->set_prev(this);
-
-			next->set_prev(head);
-
-			head->dealloc();
-
-			head->unlock();
-
-		}
-
-
-
-		if (prev_node != this || prev_node != next){
-
-			prev_node->unlock();
-
-		}
-
-
-		//header * next_in_mem = 
-
-
-
-		next->unlock();
-		unlock();
-
-		return;
-
-
-		//head->merge_next_if_available();
-
-		// header * prev = nullptr;
-		// while (prev == nullptr){
-
-		// 	prev = head->try_get_prev_node_locked();
-
-		// }
-
-		// //is prev a mergable node?
-		// if ((!prev->check_alloc()) && (!prev->check_endpoint())){
-
-		// 	//prev is free!
-
-		// 	head->merge(prev);
-
-		// 	//head is now gone, only_prev
-		// 	//prev->merge_next_if_available();
-
-		// 	//__threadfence();
-
-		// 	prev->unlock();
-
-		// 	#if DEBUG_ASSERTS
-
-		// 	assert(!check_lock())
-
-		// 	#endif
-
-		// 	return;
-
-		// }
-
-
-		// prev->unlock();
-
-		//merge the next node if possible
-		
-
-		//now attach to the current head
-		
-		//atomicLock this_lock(this);
-
-
-		// while (!lock_node_and_next()){
-		// 	printf("Stalling securing free\n");
-		// }
-
-		// header * next = get_next();
-
-		// //atomicLock next_lock(next);
-
-		// //next->stall_lock();
-
-		// //next->stall_lock();
-
-		// set_next(head);
-
-		// head->set_next(next);
-
-		// head->set_prev(this);
-
-		// next->set_prev(head);
-
-		// head->dealloc();
-
-		// __threadfence();
-
-		// next->unlock();
-		// head->unlock();
-		// unlock();
-
-
-		// printf("Free succeeded\n");
-		
-
-		// return;
-
-
-
-	}
-
 	__device__ header * merge_nodes(header * prev, header * next){
 
 
@@ -911,6 +749,10 @@ struct header {
 
 		return prev;
 
+	}
+
+	__device__ void free(void * uncasted_address){
+		free_safe(uncasted_address);
 	}
 
 
@@ -1136,7 +978,9 @@ struct header {
 
 		if (next == prev){
 
+			#if DEBUG_PRINTS
 			printf("Empty list - returning nullptr!\n");
+			#endif
 
 			__threadfence();
 			main->unlock();
@@ -1155,7 +999,9 @@ struct header {
 
 		#endif
 
+		#if DEBUG_PRINTS
 		printf("Nodes locked\n");
+		#endif
 
 		while (true){
 
@@ -1193,7 +1039,9 @@ struct header {
 
 				} else {
 
+					#if DEBUG_PRINTS
 					printf("Need %llu bytes, just freeing whole node\n", num_bytes);
+					#endif
 
 					main->printnode();
 
@@ -1398,6 +1246,310 @@ struct header {
 	}
 
 
+
+	
+	__device__ void * find_first_safe_aligned(uint64_t num_bytes, uint64_t alignment, int offset){
+
+		//printf("Starting ")
+		stall_lock();
+
+		header * prev = this;
+
+		//prev->stall_lock();
+
+		header * end_node = prev->get_prev();
+
+		header * main = prev->get_next();
+
+		header * next = main->get_next();
+
+		if (next == prev){
+
+			//printf("Empty list - returning nullptr!\n");
+
+			__threadfence();
+
+			unlock();
+			return nullptr;
+		}
+
+		// uint64_t tid = threadIdx.x+blockIdx.x*blockDim.x;
+		// printf("%llu Safe Locks secured\n", tid);
+
+		//printf("%llu Safe Locks secured\n", threadIdx.x+blockIdx.x*blockDim.x);
+
+		#if DEBUG_ASSERTS
+
+		assert(prev->check_lock());
+		assert (prev != next);
+
+		#endif
+
+		//printf("Nodes locked\n");
+
+
+		//split into cases
+		//main is an exact match or the leftover is too small to bother with
+
+		//main is a match that is too long
+
+
+		//main is not a match but could produce a node that is
+		// will split into three nodes, including the ideal
+			//will split into two nodes if too small
+
+
+		//main is not a match and does not have the space for a match
+		//this includes the case of 
+
+		while (true){
+
+
+			//this calculation checks if any node has the potential for alignment
+			//if this node matches perfectly it should be ok
+
+			//special case? if head += 32 is aligned then we're ok
+
+
+
+			uint64_t main_as_uint = (uint64_t) main;
+
+			//how many units above the alignment is main?
+			uint64_t distance_above_alignment = (main_as_uint + 32 + offset) % alignment;
+
+			if (distance_above_alignment == 0){
+
+
+				//exact match
+				if (main->get_size() >= num_bytes){
+
+					uint64_t leftover = main->get_size() - num_bytes;
+
+					
+					if (leftover > CUTOFF_SIZE && leftover > 48){
+
+
+						//case 1
+						//we are already aligned! we just need to siphon off extra space somewhere else
+
+						//ideal node takes the rest of the space
+						header * remainder_node = main->split_non_locking(leftover);
+
+						//remainder_node->stall_lock();
+
+						prev->set_next(remainder_node);
+
+						next->set_prev(remainder_node);
+
+						remainder_node->set_prev(prev);
+						remainder_node->set_next(next);
+
+						main->alloc();
+						
+						//maybe
+						//main->unlock();
+
+						//next->unlock();
+						remainder_node->unlock();
+						unlock();
+
+
+
+						char * ideal_address = ((char *) main) + 32;
+
+						#if DEBUG_ASSERTS
+
+
+						uint64_t ideal_as_uint = (uint64_t) ideal_address;
+
+						assert((ideal_as_uint + offset) % alignment == 0);
+
+						#endif
+
+						return (void *) ideal_address;
+
+						//return main;
+
+					} else {
+
+						//case 2
+						//there is enough space for this node, but not enough to generate a leftover
+
+						main->remove_from_list();
+
+						main->alloc();
+
+						//next->unlock();
+						//main->unlock();
+						unlock();
+
+						char * ideal_address = ((char *) main) + 32;
+
+						#if DEBUG_ASSERTS
+
+
+						uint64_t ideal_as_uint = (uint64_t) ideal_address;
+
+						assert((ideal_as_uint + offset) % alignment == 0);
+
+						#endif
+
+						return (void *) ideal_address;
+
+
+
+
+
+					}
+
+					//header * ideal_node = main->split_non_locking(leftover);
+
+				}
+
+
+			}
+
+			//how many more bytes do we need to traverse?
+			uint64_t distance_to_next = alignment - distance_above_alignment;
+
+			//if less than 48 bytes, we need to move to the next alignment address
+			//that is both aligned and >= 48 bytes
+
+			while (distance_to_next < 48){
+				distance_to_next += alignment;
+			}
+
+			//distance to next is the distance from the main ptr to the aligned address
+			//we we need to subtract 32 bytes
+
+			if (distance_to_next + num_bytes <= main->get_size()){
+
+
+				//main starts at 0
+				//next node should be distance_to_next
+				//node starts 32 back!
+				//distance to next starts from the data of main, not the head
+				//so no subtraction required
+				uint64_t bytes_in_main = distance_to_next;
+
+
+				uint64_t bytes_to_allocate = main->get_size() - bytes_in_main;
+
+				header * half_node = main->split_non_locking(bytes_to_allocate);
+
+				#if DEBUG_ASSERTS
+
+				uint64_t half_as_uint = (uint64_t) half_node;
+				assert(half_as_uint % alignment == 0);
+				assert(half_node->get_size() >=num_bytes);
+				#endif
+
+
+				if (bytes_to_allocate - num_bytes > 48){
+					//split into a second node
+
+					uint64_t remaining_bytes = bytes_to_allocate - num_bytes;
+
+					header * final_node = half_node->split_non_locking(remaining_bytes);
+
+					main->set_next(final_node);
+					final_node->set_next(next);
+
+					next->set_prev(final_node);
+					final_node->set_prev(main);
+
+					half_node->alloc();
+
+					//next->unlock();
+					final_node->unlock();
+					half_node->unlock();
+					//main->unlock();
+
+					__threadfence();
+					unlock();
+
+					char * ideal_address = ((char *) half_node) + 32;
+
+					#if DEBUG_ASSERTS
+
+
+					uint64_t ideal_as_uint = (uint64_t) ideal_address;
+
+					assert((ideal_as_uint + offset) % alignment == 0);
+
+					#endif
+
+					return (void *) ideal_address;
+
+
+				} else {
+
+					//return the half node
+
+					half_node->alloc();
+					half_node->unlock();
+					__threadfence();
+					unlock();
+
+					char * ideal_address = ((char *) half_node) + 32;
+
+					#if DEBUG_ASSERTS
+
+
+					uint64_t ideal_as_uint = (uint64_t) ideal_address;
+
+					assert((ideal_as_uint + offset) % alignment == 0);
+
+					#endif
+
+					return (void *) ideal_address;
+					//return half_node;
+
+
+				}
+
+			}
+
+
+			//locking scheme problem?
+
+			//3 or 4 nodes
+
+			if (next == end_node){
+
+
+				//printf("Malloc failure\n");
+				unlock();
+				return nullptr;
+
+
+
+			} else {
+
+				//printf("Shifting\n");
+
+				header * next_next = next->get_next();
+
+				prev = main;
+				main = next;
+				next = next_next;
+
+
+			}
+
+
+
+
+
+
+		}
+
+
+
+
+	}
+
+
 	__device__ void * malloc_safe(uint64_t bytes_requested){
 
 		//bytes of an object contains header + footer
@@ -1407,6 +1559,19 @@ struct header {
 
 	}
 
+	__device__ void * malloc_aligned(uint64_t bytes_requested, uint64_t alignment, int offset){
+
+		//bytes of an object contains header + footer
+		bytes_requested += 48;
+
+		//minimum alignment is 16 bytes
+
+		assert(alignment % 16 == 0);
+		assert(offset % 16 == 0);
+
+		return find_first_safe_aligned(bytes_requested, alignment, offset);
+
+	}
 
 
 

@@ -77,6 +77,106 @@ __global__ void single_thread_malloc_and_free_tests(global_ptr * head){
 
 }
 
+__global__ void test_aligned_alloc_and_free(global_ptr * head){
+
+   const uint64_t test_size = 10;
+
+   uint64_t tid = threadIdx.x+blockIdx.x*blockDim.x;
+
+   if (tid != 0) return;
+
+   printf("Starting\n");
+
+   uint64_t * array_list [test_size];
+
+   for (int i = 0; i < test_size; i++){
+
+      array_list[i] = (uint64_t *) head->malloc_aligned(sizeof(uint64_t)*20, 16, 0);
+
+   }
+
+
+   printf("%llu Malloc done\n\n", tid);
+
+   global_ptr::print_heap(head);
+
+
+   printf("And allocated nodes:\n");
+
+   for (int i=0; i< test_size; i++){
+
+      if (array_list[i] != nullptr){
+          global_ptr * node = global_ptr::get_header_from_address(array_list[i]);
+          node->printnode();
+          printf("Printed Node\n");
+      }
+     
+
+   }
+
+
+   for (int i = 0; i < test_size; i++){
+
+      if (array_list[i] != nullptr){
+         head->free_safe(array_list[i]);
+      }
+
+      printf("%d:\n", i);
+      global_ptr::print_heap(head);
+     
+   }
+
+
+   global_ptr::print_heap(head);
+
+   printf("End of case 1/2\n");
+
+
+   for (int i = 0; i < test_size; i++){
+
+      array_list[i] = (uint64_t *) head->malloc_aligned(sizeof(uint64_t), 512, -16);
+
+   }
+
+   printf("Done with large alignment alloc\n");
+
+      global_ptr::print_heap(head);
+
+
+   printf("And allocated nodes:\n");
+
+   for (int i=0; i< test_size; i++){
+
+      if (array_list[i] != nullptr){
+          global_ptr * node = global_ptr::get_header_from_address(array_list[i]);
+          node->printnode();
+          //printf("Printed Node\n");
+      }
+     
+
+   }
+
+
+   printf("End of print\n");
+
+   for (int i = 0; i < test_size; i++){
+
+      if (array_list[i] != nullptr){
+         head->free_safe(array_list[i]);
+      }
+
+      printf("%d:\n", i);
+      global_ptr::print_heap(head);
+     
+   }
+
+   global_ptr::print_heap(head);
+
+   return;
+
+}
+
+
 __global__ void multi_thread_malloc_and_free(global_ptr * head, uint64_t num_threads, uint64_t ** nodes){
 
    uint64_t tid = threadIdx.x+blockIdx.x*blockDim.x;
@@ -216,6 +316,21 @@ int main(int argc, char** argv) {
    global_ptr::free_heap(heap);
 
    cudaDeviceSynchronize();
+
+
+
+
+   printf("Starting alignment tests\n");
+
+   heap = global_ptr::init_heap(bytes_in_use);
+
+   cudaDeviceSynchronize();
+
+   test_aligned_alloc_and_free<<<1,1>>>(heap);
+
+   cudaDeviceSynchronize();
+
+   global_ptr::free_heap(heap);
 
 
 

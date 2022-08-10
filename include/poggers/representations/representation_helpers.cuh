@@ -427,7 +427,8 @@ __device__ inline bool replace_uint16(uint16_t * address, uint16_t expected, uin
 
 		//set bits that should be masked to 0
 
-		uint16_t read_from_address = atomicCAS((unsigned short * ) address, (unsigned short) 0, (unsigned short) 0) & ~mask;
+		uint16_t read_from_address = address[0] & ~mask;
+		// atomicCAS((unsigned short * ) address, (unsigned short) 0, (unsigned short) 0) & ~mask;
 		//uint16_t read_from_address = address[0] & ~mask;
 
 		uint16_t expected_and_mask = expected & mask;
@@ -454,6 +455,113 @@ __device__ inline bool replace_uint16(uint16_t * address, uint16_t expected, uin
 	}
 
 
+
+}
+
+	
+//for the second half of any two part insert, an atomicOR operation will suffice
+//this should hopefully up the throughput of these sections over performing two atomicCAS operations
+// __device__ inline bool atomicOr_uint16(uint16_t * address, uint16_t expected, uint16_t desired, uint16_t mask){
+
+// 	//expected/desired should be configured to work with mask
+
+
+// 		//atomicAdd((unsigned short int * ) 0)
+
+// 		//set bits that should be masked to 0
+
+// 		//uint16_t read_from_address = address[0] & ~mask;
+// 		// atomicCAS((unsigned short * ) address, (unsigned short) 0, (unsigned short) 0) & ~mask;
+// 		//uint16_t read_from_address = address[0] & ~mask;
+
+// 		//uint16_t expected_and_mask = expected & mask;
+
+// 		//uint16_t expected_read = expected_and_mask | read_from_address;
+
+// 		//get mask for desired
+
+// 		uint16_t desired_mask = desired & mask; 
+
+// 		//uint16_t desired_read = desired_mask | read_from_address;
+
+
+
+// 		uint16_t result = typed_atomic_CAS<uint16_t>(address, expected_read, desired_read);
+
+// 		__threadfence();
+
+// 		if (result == expected_read) return true;
+
+// 		//this is only true if our expectation was wrong
+// 		if ((result & (~mask)) == read_from_address) return false;
+
+
+
+
+// }
+
+
+template<>
+__device__ __inline__ bool typed_atomic_write<uint8_t>(uint8_t * backing, uint8_t item, uint8_t replace){
+
+
+	uint64_t offset = (uint64_t) backing;
+
+	uint16_t mask;
+
+	uint16_t * address_to_write;
+
+	uint16_t expected;
+
+	uint16_t desired;
+
+
+	if ((offset % 2) == 0){
+
+		mask = (1ULL << 8)-1;
+
+		address_to_write = (uint16_t * ) backing;
+
+		expected = item;
+
+		desired = replace;
+
+		assert((expected & mask ) == item);
+		assert((desired & mask) == replace);
+
+	} else {
+
+		mask = (1ULL << 8)-1;
+
+		mask = mask << 8;
+
+
+		expected = item;
+
+		expected = expected << 8;
+
+		desired = replace;
+
+		desired = replace << 8;
+
+		assert ((expected & mask) == expected);
+		assert ((desired & mask) == desired);
+
+		assert (((desired & mask) >> 8) == replace);
+		assert (((expected & mask) >> 8) == item);
+
+
+		address_to_write = (uint16_t * ) (backing-1);
+
+
+
+
+	}
+
+
+
+
+	return replace_uint16(address_to_write, expected, desired, mask);
 
 }
 
@@ -612,7 +720,7 @@ __device__ inline bool match_second(uint16_t * address, uint16_t item){
 
 	uint16_t masked_item = (item & first_mask) | (item & second_mask);
 
-	if (item & first_mask == 0){
+	if ((item & first_mask) == 0){
 		masked_item |= (1ULL << 12);
 	}
 	//uint16_t masked_item = item_mask & item;
@@ -638,7 +746,7 @@ __device__ inline bool match_third(uint16_t * address, uint16_t item){
 
 	uint16_t masked_item = (item & first_mask) | (item & second_mask);
 
-	if (item & first_mask == 0){
+	if ((item & first_mask) == 0){
 		masked_item |= (1ULL << 8);
 	}
 
@@ -680,6 +788,7 @@ __device__ inline bool replace_first(uint16_t * address, uint16_t expected, uint
 
 	} 
 
+
 	// desired = desired | 1ULL;
 
 	return replace_uint16(address, expected, desired, mask);
@@ -698,18 +807,25 @@ __device__ inline bool replace_second(uint16_t * address, uint16_t expected, uin
 
 	uint16_t second_mask = (1ULL << 8)-1;
 
-	//if upper 4 are 0 set one bit
-	if (desired & first_mask == 0){
+
+	if ((desired & first_mask) == 0){
 
 		desired |= (1ULL << 12);
 
 	}
 
 
+	//printf("Desired %u, desired front masked: %u, desired second mask: %u, correction %u, desired corrected: %u\n", desired, desired & first_mask, desired & second_mask, (1ULL << 12), (desired | (1ULL << 12)) & first_mask);
+
+
+
+
+	//0000 
 	if (replace_uint16(address, expected, desired, first_mask)){
 
 
 		bool replaced = replace_uint16(address+1, expected, desired, second_mask);
+
 		
 		assert(replaced);
 
@@ -734,15 +850,17 @@ __device__ inline bool replace_third(uint16_t * address, uint16_t expected, uint
 
 
 
-	if (desired & first_mask == 0){
+	if ((desired & first_mask) == 0){
 
 		desired |= (1ULL << 8);
 
 	}
 
+
 	if (replace_uint16(address+1, expected, desired, first_mask)){
 
 		bool replaced = replace_uint16(address+2, expected, desired, second_mask);
+
 
 		assert(replaced);
 
@@ -769,6 +887,7 @@ __device__ inline bool replace_fourth(uint16_t * address, uint16_t expected, uin
 
 	} 
 
+
 	return replace_uint16(address+2, expected, desired, mask);
 
 }
@@ -782,7 +901,7 @@ __device__ inline bool sub_byte_match(uint16_t * address, T item, int index_to_a
 
 	int offset = index_to_access % 4;
 
-	uint16_t short_item = (uint16_t) item
+	uint16_t short_item = (uint16_t) item;
 
 	if (offset == 0){
 

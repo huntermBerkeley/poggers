@@ -20,4 +20,10 @@ ConfigureExecutable(free_list_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/free_list_t
 
 ConfigureExecutable(bucket_speed_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/bucket_speed_tests.cu" "${POGGERS_TESTS_BINARY_DIR}")
 
+ConfigureExecutable(test_cg_variations "${CMAKE_CURRENT_SOURCE_DIR}/src/test_cg_variations.cu" "${POGGERS_TESTS_BINARY_DIR}")
+
+ConfigureExecutable(aligned_stack_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/aligned_stack_tests.cu" "${POGGERS_TESTS_BINARY_DIR}")
+
+ConfigureExecutable(sub_allocator_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/sub_allocator_tests.cu" "${POGGERS_TESTS_BINARY_DIR}")
+
 #set_target_properties(separable_test PROPERTIES CUDA_SEPARABLE_COMPILATION ON)

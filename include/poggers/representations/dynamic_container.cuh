@@ -32,7 +32,17 @@ struct  internal_dynamic_container {
 
 		filled_container_type storage;
 
-		__host__ __device__ inline const SmallKey get_smallKey(Key ext_key){ return SmallKey{ext_key}; }
+		__host__ __device__ inline const SmallKey get_smallKey(Key ext_key){ 
+
+
+			SmallKey smaller_version = SmallKey{ext_key}; 
+
+			if (smaller_version == get_empty()){
+				smaller_version += 1;
+			}
+			return smaller_version;
+
+		}
 
 
 		__host__ __device__ static const SmallKey get_empty(){ return filled_container_type::get_empty(); }

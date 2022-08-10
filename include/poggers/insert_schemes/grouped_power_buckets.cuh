@@ -9,6 +9,8 @@
 
 #include <cooperative_groups.h>
 
+#include <iostream>
+
 //#include <poggers/hash_schemes/murmurhash.cuh>
 
 namespace cg = cooperative_groups;
@@ -102,16 +104,28 @@ public:
 
 		rep_type * ext_slots;
 
-		uint64_t min_buckets = (ext_nslots-1)/(Bucket_Size*Buckets_per_cache_line)+1;
+		//min_buckets is the number of bucket objects required
+		uint64_t min_buckets = (ext_nslots-1)/(Bucket_Size)+1;
 
-		uint64_t true_nslots = min_buckets*Buckets_per_cache_line;
+		uint64_t min_cache_lines = (min_buckets-1)/Buckets_per_cache_line+1;
 
-		printf("Constructing table wtih %llu buckets, %llu slots\n", true_nslots, min_buckets*Bucket_Size);
-		printf("Using %llu bytes, %llu bytes per item, %llu per bucket\n", min_buckets*sizeof(rep_type), sizeof(rep_type), sizeof(int_rep_type));
+		
+		printf("Min buckets requested! %llu, grouped into %llu groups\n", min_buckets, min_cache_lines);
 
 
-		cudaMalloc((void **)& ext_slots, min_buckets*sizeof(rep_type));
-		cudaMemset(ext_slots, 0, min_buckets*sizeof(rep_type));
+
+		//uint64_t true_nslots = min_buckets;
+
+		printf("Constructing table wtih %llu buckets, %llu slots\n", min_buckets, min_buckets*Bucket_Size);
+
+
+		uint64_t bytes_used =  min_cache_lines*sizeof(rep_type);
+		std::cout << "Using " << bytes_used << " bytes, " << 1.0*bytes_used/ext_nslots << " bytes per item, " << sizeof(int_rep_type) << " per bucket" << std::endl;
+		//printf("Using %llu bytes, %llu bytes per item, %llu per bucket\n", min_cache_lines*sizeof(rep_type), 1.0*min_cache_lines*sizeof(rep_type)/(ext_nslots), sizeof(int_rep_type));
+
+
+		cudaMalloc((void **)& ext_slots, min_cache_lines*sizeof(rep_type));
+		cudaMemset(ext_slots, 0, min_cache_lines*sizeof(rep_type));
 
 		my_type host_version (ext_slots, min_buckets, ext_seed);
 
@@ -153,7 +167,7 @@ public:
 
        		//printf("checking_for_slot\n");
 
- 			return slots[insert_slot / num_buckets].internal_buckets[insert_slot % num_buckets].insert(insert_tile, key, val);
+ 			return slots[insert_slot / Buckets_per_cache_line].internal_buckets[insert_slot % Buckets_per_cache_line].insert(insert_tile, key, val);
 
 	}
 
@@ -162,14 +176,14 @@ public:
 
 			//if (insert_tile.thread_rank() == 0) printf("In query!\n");
 
-			return slots[insert_slot / num_buckets].internal_buckets[insert_slot % num_buckets].query(insert_tile, key,ext_val);
+			return slots[insert_slot / Buckets_per_cache_line].internal_buckets[insert_slot % Buckets_per_cache_line].query(insert_tile, key,ext_val);
 
 	}
 
 	__device__ __inline__ int check_fill_bucket(cg::thread_block_tile<Partition_Size> insert_tile, Key key, Val val, uint64_t insert_slot){
 
 
-		return slots[insert_slot / num_buckets].internal_buckets[insert_slot % num_buckets].get_fill(insert_tile);
+		return slots[insert_slot / Buckets_per_cache_line].internal_buckets[insert_slot % Buckets_per_cache_line].get_fill(insert_tile);
 
 
 
@@ -184,7 +198,7 @@ public:
 
 
 
-     		return slots[insert_slot / num_buckets].internal_buckets[insert_slot % num_buckets].remove(insert_tile, key);
+     		return slots[insert_slot / Buckets_per_cache_line].internal_buckets[insert_slot % Buckets_per_cache_line].remove(insert_tile, key);
 
 	}
 
@@ -310,7 +324,7 @@ public:
 		for (uint64_t insert_slot = insert_probing_scheme.begin(key); insert_slot != insert_probing_scheme.end(); insert_slot = insert_probing_scheme.next()){
 
        			
-       		insert_slot = insert_slot % num_buckets;
+       	insert_slot = insert_slot % num_buckets;
 
 
        		

@@ -79,7 +79,8 @@
 //using tiny_static_table_4 = poggers::tables::bucketed_table<uint64_t, uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 4, 4, poggers::insert_schemes::bucket_insert, 20, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
 //simple test version
-using tcqf_twelve = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 4, 16, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+ using tcqf_twelve = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 4, 16, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+
 
 //test version with old buckets
 //this works
@@ -87,33 +88,31 @@ using tcqf_twelve = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::
 
 
 //12-16
-using tcqf_twelve_16 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 4, 16, poggers::insert_schemes::blocked_bucket_insert<5>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 //using tcqf = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 4, 16, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
 //12-8
-using tcqf_twelve_8 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 2, 8, poggers::insert_schemes::blocked_bucket_insert<10>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+//using tcqf_twelve_8 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 4, 8, poggers::insert_schemes::blocked_bucket_insert<10>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
 
 //12-12
-using tcqf_twelve_12 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 4, 12, poggers::insert_schemes::blocked_bucket_insert<6>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+//using tcqf_twelve_12 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 4, 8, poggers::insert_schemes::blocked_bucket_insert<6>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
 
 //12-32
-using tcqf_twelve_32 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 8, 32, poggers::insert_schemes::blocked_bucket_insert<2>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+//using tcqf_twelve_32 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 4, 32, poggers::insert_schemes::blocked_bucket_insert<2>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
 
 //using tcqf_no_back = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 4, 16, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
 
-using tcqf_16_16 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 4, 16, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+//using tcqf_16_16 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 4, 16, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
-using tcqf_16_32 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 8, 32, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+//using tcqf_16_32 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 8, 32, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
 
 //using warpcore_bloom = warpcore::BloomFilter<uint64_t>;
 
-using tcqf_8_8 = poggers::tables::static_table<uint64_t,uint8_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint8_t>::representation, 4, 8, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-
+//using tcqf_8_8 = poggers::tables::static_table<uint64_t,uint8_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint8_t>::representation, 4, 8, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
 
 #define gpuErrorCheck(ans) { gpuAssert((ans), __FILE__, __LINE__); }
@@ -520,7 +519,7 @@ __global__ void fp_speed_query_kernel(Filter * filter, Key * keys, Val * vals, u
 
 
 template <typename Filter, typename Val>
-__host__ void test_tcqf_speed(const std::string& filename, int num_bits, int num_batches, bool first_file){
+__host__ void test_tcqf_speed(const std::string& filename, int num_bits, int num_batches){
 
 
    using Key = uint64_t;
@@ -528,7 +527,7 @@ __host__ void test_tcqf_speed(const std::string& filename, int num_bits, int num
 
    //using Filter = tcqf;
 
-   std::cout << "Starting " << filename << " " << num_bits << std::endl;
+   //std::cout << "Starting " << filename << " " << num_bits << std::endl;
 
    // poggers::sizing::size_in_num_slots<2> pre_init ((1ULL << num_bits), (1ULL << num_bits)/100);
 
@@ -561,7 +560,7 @@ __host__ void test_tcqf_speed(const std::string& filename, int num_bits, int num
    cudaMallocManaged((void **)& misses, sizeof(uint64_t)*5);
    cudaDeviceSynchronize();
 
-   printf("Data generated\n");
+   //printf("Data generated\n");
 
    misses[0] = 0;
    misses[1] = 0;
@@ -721,7 +720,7 @@ __host__ void test_tcqf_speed(const std::string& filename, int num_bits, int num
    //time to output
 
 
-   printf("nitems: %llu, insert misses: %llu, query missed: %llu, query wrong %llu, fp missed %llu, fp wrong %llu\n", nitems, misses[0], misses[1], misses[2], misses[3], misses[4]);
+   //printf("nitems: %llu, insert misses: %llu, query missed: %llu, query wrong %llu, fp missed %llu, fp wrong %llu\n", nitems, misses[0], misses[1], misses[2], misses[3], misses[4]);
 
    std::chrono::duration<double> summed_insert_diff = std::chrono::nanoseconds::zero();
 
@@ -747,137 +746,23 @@ __host__ void test_tcqf_speed(const std::string& filename, int num_bits, int num
       summed_delete_diff += delete_diff[i];
    }
 
-   std::string insert_file = filename + "_" + std::to_string(num_bits) + "_insert.txt";
-   std::string query_file = filename + "_" + std::to_string(num_bits) + "_lookup.txt";
-   std::string fp_file = filename + "_" + std::to_string(num_bits) + "_fp.txt";
-   
-   //agg files
-   std::string agg_insert_file = filename + "_aggregate_inserts.txt";
-   std::string agg_lookup_file = filename + "_aggregate_lookup.txt";
-   std::string agg_fp_file = filename + "_aggregate_fp.txt";
-
-   std::string del_file = filename + "_aggregate_delets.txt";
-
-
-
-  // std::cout << insert_file << std::endl;
-
-
-   FILE *fp_insert = fopen(insert_file.c_str(), "w");
-   FILE *fp_lookup = fopen(query_file.c_str(), "w");
-   FILE *fp_false_lookup = fopen(fp_file.c_str(), "w");
-
-
-   FILE *fp_agg_insert;
-   FILE *fp_agg_lookup;
-   FILE *fp_agg_fp;
-   FILE *fp_agg_del;
-
-   if (first_file){
-
-      fp_agg_insert = fopen(agg_insert_file.c_str(), "w");
-      fp_agg_lookup = fopen(agg_lookup_file.c_str(), "w");
-      fp_agg_fp = fopen(agg_fp_file.c_str(), "w");
-      fp_agg_del = fopen(del_file.c_str(), "w");
-
-   } else {
-
-      fp_agg_insert = fopen(agg_insert_file.c_str(), "a");
-      fp_agg_lookup = fopen(agg_lookup_file.c_str(), "a");
-      fp_agg_fp = fopen(agg_fp_file.c_str(), "a");
-      fp_agg_del = fopen(del_file.c_str(), "a");
-
-   }
-
-
-   if (fp_insert == NULL) {
-    printf("Can't open the data file %s\n", insert_file);
-    exit(1);
-   }
-
-   if (fp_lookup == NULL ) {
-      printf("Can't open the data file %s\n", query_file);
-      exit(1);
-   }
-
-   if (fp_false_lookup == NULL) {
-      printf("Can't open the data file %s\n", fp_file);
-      exit(1);
-   }
-
-
-
-   if (fp_agg_insert == NULL || fp_agg_lookup == NULL || fp_agg_fp == NULL) {
-      printf("Can't open the aggregate files for %s-%d\n", filename, num_bits);
-      exit(1);
-   }
-
-   if (fp_agg_del == NULL){
-      std::cout << "Cant open " << del_file << std::endl;
-   }
-
-   //inserts
-
-   //const uint64_t scaling_factor = 1ULL;
-   const uint64_t scaling_factor = 1000000ULL;
-
-   std::cout << "Writing results to file: " <<  insert_file << std::endl;
-
-   fprintf(fp_insert, "x_0 y_0\n");
-   for (int i = 0; i < num_batches; i++){
-      fprintf(fp_insert, "%d", i*100/num_batches);
-
-      fprintf(fp_insert, " %f\n", batch_amount[i]/(scaling_factor*insert_diff[i].count()));
-   }
-
-
-   //queries
-   std::cout << "Writing results to file: " <<  query_file << std::endl;
   
 
-   fprintf(fp_lookup, "x_0 y_0\n");
-   for (int i = 0; i < num_batches; i++){
-      fprintf(fp_lookup, "%d", i*100/num_batches);
 
-      fprintf(fp_lookup, " %f\n", batch_amount[i]/(scaling_factor*query_diff[i].count()));
-   }
+   const uint64_t scaling_factor = 1000000ULL;
 
 
-   std::cout << "Writing results to file: " <<  fp_file << std::endl;
 
-   fprintf(fp_false_lookup, "x_0 y_0\n");
-   for (int i = 0; i < num_batches; i++){
-      fprintf(fp_false_lookup, "%d", i*100/num_batches);
+   double insert_throughput = nitems/(scaling_factor*summed_insert_diff.count());
+      
+   double lookup_throughput = nitems/(scaling_factor*summed_query_diff.count());
 
-      fprintf(fp_false_lookup, " %f\n", batch_amount[i]/(scaling_factor*fp_diff[i].count()));
-   }
-
-   if (first_file){
-      fprintf(fp_agg_insert, "x_0 y_0\n");
-      fprintf(fp_agg_lookup, "x_0 y_0\n");
-      fprintf(fp_agg_fp, "x_0 y_0\n");
-      fprintf(fp_agg_del, "x_0 y_0\n");
-   }
-
-   // fprintf(fp_agg_insert, "%d %f\n", num_bits, nitems/(1000ULL*summed_insert_diff.count()));
-   // fprintf(fp_agg_lookup,  "%d %f\n", num_bits, nitems/(1000ULL*summed_query_diff.count()));
-   // fprintf(fp_agg_fp,  "%d %f\n", num_bits, nitems/(1000ULL*summed_fp_diff.count()));
-
-   fprintf(fp_agg_insert, "%d %f\n", num_bits, nitems/(scaling_factor*summed_insert_diff.count()));
-   fprintf(fp_agg_lookup,  "%d %f\n", num_bits, nitems/(scaling_factor*summed_query_diff.count()));
-   fprintf(fp_agg_fp,  "%d %f\n", num_bits, nitems/(scaling_factor*summed_fp_diff.count()));
-
-   fprintf(fp_agg_del,  "%d %f\n", num_bits, nitems/(scaling_factor*summed_delete_diff.count()));
+   double fp_throughput = nitems/(scaling_factor*summed_fp_diff.count());
 
 
-   fclose(fp_insert);
-   fclose(fp_lookup);
-   fclose(fp_false_lookup);
-   fclose(fp_agg_insert);
-   fclose(fp_agg_lookup);
-   fclose(fp_agg_fp);
-   fclose(fp_agg_del);
+   std::cout << filename << ": " << insert_throughput << ", " << lookup_throughput << ", " << fp_throughput <<"." << std::endl;
 
+   // std::cout << insert_file << std::endl;
    return;
 
 
@@ -885,372 +770,6 @@ __host__ void test_tcqf_speed(const std::string& filename, int num_bits, int num
 
 }
 
-
-template <typename Filter, typename Val>
-__host__ void tcqf_get_fp(const std::string& filename, int num_bits, int num_batches, bool first_file){
-
-
-   using Key = uint64_t;
-   //using Val = uint8_t;
-
-   //using Filter = tcqf;
-
-   std::cout << "Starting " << filename << " " << num_bits << std::endl;
-
-   // poggers::sizing::size_in_num_slots<2> pre_init ((1ULL << num_bits), (1ULL << num_bits)/100);
-
-   // poggers::sizing::size_in_num_slots<2> * Initializer = &pre_init;
-
-
-   poggers::sizing::size_in_num_slots<1> pre_init ((1ULL << num_bits));
-
-   poggers::sizing::size_in_num_slots<1> * Initializer = &pre_init;
-
-
-
-   uint64_t nitems = Initializer->total()*.9;
-
-   Key * host_keys = load_main_data<Key>(nitems);
-   Val * host_vals = load_main_data<Val>(nitems);
-
-
-   Key * fp_keys = load_alt_data<Key>(nitems);
-
-   Key * dev_keys;
-
-   Val * dev_vals;
-
-
-
-
-   uint64_t * misses;
-
-   cudaMallocManaged((void **)& misses, sizeof(uint64_t)*5);
-   cudaDeviceSynchronize();
-
-   printf("Data generated\n");
-
-   misses[0] = 0;
-   misses[1] = 0;
-   misses[2] = 0;
-   misses[3] = 0;
-   misses[4] = 0;
-
-   //static seed for testing
-   Filter * test_filter = Filter::generate_on_device(Initializer, 42);
-
-   cudaDeviceSynchronize();
-
-   //init timing materials
-   std::chrono::duration<double>  * insert_diff = (std::chrono::duration<double>  *) malloc(num_batches*sizeof(std::chrono::duration<double>));
-   std::chrono::duration<double>  * query_diff = (std::chrono::duration<double>  *) malloc(num_batches*sizeof(std::chrono::duration<double>));
-   std::chrono::duration<double>  * fp_diff = (std::chrono::duration<double>  *) malloc(num_batches*sizeof(std::chrono::duration<double>));
-
-   std::chrono::duration<double>  * delete_diff = (std::chrono::duration<double>  *) malloc(num_batches*sizeof(std::chrono::duration<double>));
-
-
-
-   uint64_t * batch_amount = (uint64_t *) malloc(num_batches*sizeof(uint64_t));
-
-   //print_tid_kernel<Filter, Key, Val><<<test_filter->get_num_blocks(nitems),test_filter->get_block_size(nitems)>>>(test_filter, dev_keys, dev_vals, nitems);
-
-
-   for (uint64_t i = 0; i < num_batches; i++){
-
-      uint64_t start_of_batch = i*nitems/num_batches;
-      uint64_t items_in_this_batch = (i+1)*nitems/num_batches;
-
-      if (items_in_this_batch > nitems) items_in_this_batch = nitems;
-
-      items_in_this_batch = items_in_this_batch - start_of_batch;
-
-
-      batch_amount[i] = items_in_this_batch;
-
-
-      cudaMalloc((void **)& dev_keys, items_in_this_batch*sizeof(Key));
-      cudaMalloc((void **)& dev_vals, items_in_this_batch*sizeof(Val));
-
-
-      cudaMemcpy(dev_keys, host_keys+start_of_batch, items_in_this_batch*sizeof(Key), cudaMemcpyHostToDevice);
-      cudaMemcpy(dev_vals, host_vals+start_of_batch, items_in_this_batch*sizeof(Val), cudaMemcpyHostToDevice);
-
-
-      bool * missed;
-
-      cudaMalloc((void **)&missed, items_in_this_batch*sizeof(bool));
-
-
-
-      //ensure GPU is caught up for next task
-      cudaDeviceSynchronize();
-
-      auto insert_start = std::chrono::high_resolution_clock::now();
-
-      //add function for configure parameters - should be called by ht and return dim3
-      //speed_insert_kernel<Filter, Key, Val><<<test_filter->get_num_blocks(items_in_this_batch),test_filter->get_block_size(items_in_this_batch)>>>(test_filter, dev_keys, dev_vals, items_in_this_batch, misses);
-      debug_insert_kernel<Filter, Key, Val><<<test_filter->get_num_blocks(items_in_this_batch),test_filter->get_block_size(items_in_this_batch)>>>(test_filter, dev_keys, dev_vals, items_in_this_batch, misses, missed);
-      
-      cudaDeviceSynchronize();
-      auto insert_end = std::chrono::high_resolution_clock::now();
-
-      insert_diff[i] = insert_end-insert_start;
-
-      cudaMemcpy(dev_keys, host_keys+start_of_batch, items_in_this_batch*sizeof(Key), cudaMemcpyHostToDevice);
-      cudaMemcpy(dev_vals, host_vals+start_of_batch, items_in_this_batch*sizeof(Val), cudaMemcpyHostToDevice);
-
-
-      cudaDeviceSynchronize();
-
-      auto query_start = std::chrono::high_resolution_clock::now();
-
-      //speed_query_kernel<Filter, Key, Val><<<test_filter->get_num_blocks(items_in_this_batch),test_filter->get_block_size(items_in_this_batch)>>>(test_filter, dev_keys, dev_vals, items_in_this_batch, &misses[1], &misses[2]);
-      debug_query_kernel<Filter, Key, Val><<<test_filter->get_num_blocks(items_in_this_batch),test_filter->get_block_size(items_in_this_batch)>>>(test_filter, dev_keys, dev_vals, items_in_this_batch, &misses[1], &misses[2], missed);
-      
-      cudaDeviceSynchronize();
-      auto query_end = std::chrono::high_resolution_clock::now();
-
-
-     
-      query_diff[i] = query_end - query_start;
-
-      cudaMemcpy(dev_keys, fp_keys+start_of_batch, items_in_this_batch*sizeof(Key), cudaMemcpyHostToDevice);
-      cudaMemcpy(dev_vals, host_vals+start_of_batch, items_in_this_batch*sizeof(Val), cudaMemcpyHostToDevice);
-
-
-      cudaDeviceSynchronize();
-
-      auto fp_start = std::chrono::high_resolution_clock::now();
-
-      fp_speed_query_kernel<Filter, Key, Val><<<test_filter->get_num_blocks(items_in_this_batch),test_filter->get_block_size(items_in_this_batch)>>>(test_filter, dev_keys, dev_vals, items_in_this_batch, &misses[3], &misses[4]);
-
-
-      cudaDeviceSynchronize();
-      auto fp_end = std::chrono::high_resolution_clock::now();
-
-      fp_diff[i] = fp_end-fp_start;
-
-
-      cudaFree(dev_keys);
-      cudaFree(dev_vals);
-
-      cudaFree(missed);
-
-
-   }
-
-   //deletes
-   // for (uint64_t i = 0; i < num_batches; i++){
-
-   //    uint64_t start_of_batch = i*nitems/num_batches;
-   //    uint64_t items_in_this_batch = (i+1)*nitems/num_batches;
-
-   //    if (items_in_this_batch > nitems) items_in_this_batch = nitems;
-
-   //    items_in_this_batch = items_in_this_batch - start_of_batch;
-
-
-   //   // batch_amount[i] = items_in_this_batch;
-
-
-   //    cudaMalloc((void **)& dev_keys, items_in_this_batch*sizeof(Key));
-   //    //cudaMalloc((void **)& dev_vals, items_in_this_batch*sizeof(Val));
-
-
-   //    cudaMemcpy(dev_keys, host_keys+start_of_batch, items_in_this_batch*sizeof(Key), cudaMemcpyHostToDevice);
-   //    //cudaMemcpy(dev_vals, host_vals+start_of_batch, items_in_this_batch*sizeof(Val), cudaMemcpyHostToDevice);
-
-   //    cudaDeviceSynchronize();
-
-   //    auto delete_start = std::chrono::high_resolution_clock::now();
-
-   //    speed_query_kernel<Filter, Key, Val><<<test_filter->get_num_blocks(items_in_this_batch),test_filter->get_block_size(items_in_this_batch)>>>(test_filter, dev_keys, dev_vals, items_in_this_batch, &misses[1], &misses[2]);
-   //    cudaDeviceSynchronize();
-   //    auto delete_end = std::chrono::high_resolution_clock::now();
-
-
-     
-   //    delete_diff[i] = delete_end - delete_start;
-
-   // }
-
-   cudaDeviceSynchronize();
-
-
-   Filter::free_on_device(test_filter);
-
-   free(host_keys);
-   free(host_vals);
-   free(fp_keys);
-
-   //free pieces
-
-   //time to output
-
-
-   printf("nitems: %llu, insert misses: %llu, query missed: %llu, query wrong %llu, fp missed %llu, fp wrong %llu\n", nitems, misses[0], misses[1], misses[2], misses[3], misses[4]);
-
-   std::chrono::duration<double> summed_insert_diff = std::chrono::nanoseconds::zero();
-
-   for (int i =0; i < num_batches;i++){
-      summed_insert_diff += insert_diff[i];
-   }
-
-   std::chrono::duration<double> summed_query_diff = std::chrono::nanoseconds::zero();
-
-   for (int i =0; i < num_batches;i++){
-      summed_query_diff += query_diff[i];
-   }
-
-   std::chrono::duration<double> summed_fp_diff = std::chrono::nanoseconds::zero();
-
-   for (int i =0; i < num_batches;i++){
-      summed_fp_diff += fp_diff[i];
-   }
-
-   std::chrono::duration<double> summed_delete_diff = std::chrono::nanoseconds::zero();
-
-   for (int i =0; i < num_batches;i++){
-      summed_delete_diff += delete_diff[i];
-   }
-
-   std::string insert_file = filename + "_" + std::to_string(num_bits) + "_insert.txt";
-   std::string query_file = filename + "_" + std::to_string(num_bits) + "_lookup.txt";
-   std::string fp_file = filename + "_" + std::to_string(num_bits) + "_fp.txt";
-   
-   //agg files
-   std::string agg_insert_file = filename + "_aggregate_inserts.txt";
-   std::string agg_lookup_file = filename + "_aggregate_lookup.txt";
-   std::string agg_fp_file = filename + "_aggregate_fp.txt";
-
-   std::string del_file = filename + "_aggregate_delets.txt";
-
-
-
-  // std::cout << insert_file << std::endl;
-
-
-   FILE *fp_insert = fopen(insert_file.c_str(), "w");
-   FILE *fp_lookup = fopen(query_file.c_str(), "w");
-   FILE *fp_false_lookup = fopen(fp_file.c_str(), "w");
-
-
-   FILE *fp_agg_insert;
-   FILE *fp_agg_lookup;
-   FILE *fp_agg_fp;
-   FILE *fp_agg_del;
-
-   if (first_file){
-
-      fp_agg_insert = fopen(agg_insert_file.c_str(), "w");
-      fp_agg_lookup = fopen(agg_lookup_file.c_str(), "w");
-      fp_agg_fp = fopen(agg_fp_file.c_str(), "w");
-      fp_agg_del = fopen(del_file.c_str(), "w");
-
-   } else {
-
-      fp_agg_insert = fopen(agg_insert_file.c_str(), "a");
-      fp_agg_lookup = fopen(agg_lookup_file.c_str(), "a");
-      fp_agg_fp = fopen(agg_fp_file.c_str(), "a");
-      fp_agg_del = fopen(del_file.c_str(), "a");
-
-   }
-
-
-   if (fp_insert == NULL) {
-    printf("Can't open the data file %s\n", insert_file);
-    exit(1);
-   }
-
-   if (fp_lookup == NULL ) {
-      printf("Can't open the data file %s\n", query_file);
-      exit(1);
-   }
-
-   if (fp_false_lookup == NULL) {
-      printf("Can't open the data file %s\n", fp_file);
-      exit(1);
-   }
-
-
-
-   if (fp_agg_insert == NULL || fp_agg_lookup == NULL || fp_agg_fp == NULL) {
-      printf("Can't open the aggregate files for %s-%d\n", filename, num_bits);
-      exit(1);
-   }
-
-   if (fp_agg_del == NULL){
-      std::cout << "Cant open " << del_file << std::endl;
-   }
-
-   //inserts
-
-   //const uint64_t scaling_factor = 1ULL;
-   const uint64_t scaling_factor = 1000000ULL;
-
-   std::cout << "Writing results to file: " <<  insert_file << std::endl;
-
-   fprintf(fp_insert, "x_0 y_0\n");
-   for (int i = 0; i < num_batches; i++){
-      fprintf(fp_insert, "%d", i*100/num_batches);
-
-      fprintf(fp_insert, " %f\n", batch_amount[i]/(scaling_factor*insert_diff[i].count()));
-   }
-
-
-   //queries
-   std::cout << "Writing results to file: " <<  query_file << std::endl;
-  
-
-   fprintf(fp_lookup, "x_0 y_0\n");
-   for (int i = 0; i < num_batches; i++){
-      fprintf(fp_lookup, "%d", i*100/num_batches);
-
-      fprintf(fp_lookup, " %f\n", batch_amount[i]/(scaling_factor*query_diff[i].count()));
-   }
-
-
-   std::cout << "Writing results to file: " <<  fp_file << std::endl;
-
-   fprintf(fp_false_lookup, "x_0 y_0\n");
-   for (int i = 0; i < num_batches; i++){
-      fprintf(fp_false_lookup, "%d", i*100/num_batches);
-
-      fprintf(fp_false_lookup, " %f\n", batch_amount[i]/(scaling_factor*fp_diff[i].count()));
-   }
-
-   if (first_file){
-      fprintf(fp_agg_insert, "x_0 y_0\n");
-      fprintf(fp_agg_lookup, "x_0 y_0\n");
-      fprintf(fp_agg_fp, "x_0 y_0\n");
-      fprintf(fp_agg_del, "x_0 y_0\n");
-   }
-
-   // fprintf(fp_agg_insert, "%d %f\n", num_bits, nitems/(1000ULL*summed_insert_diff.count()));
-   // fprintf(fp_agg_lookup,  "%d %f\n", num_bits, nitems/(1000ULL*summed_query_diff.count()));
-   // fprintf(fp_agg_fp,  "%d %f\n", num_bits, nitems/(1000ULL*summed_fp_diff.count()));
-
-   fprintf(fp_agg_insert, "%d %f\n", num_bits, nitems/(scaling_factor*summed_insert_diff.count()));
-   fprintf(fp_agg_lookup,  "%d %f\n", num_bits, nitems/(scaling_factor*summed_query_diff.count()));
-   fprintf(fp_agg_fp,  "%d %f\n", num_bits, nitems/(scaling_factor*summed_fp_diff.count()));
-
-   fprintf(fp_agg_del,  "%d %f\n", num_bits, nitems/(scaling_factor*summed_delete_diff.count()));
-
-
-   fclose(fp_insert);
-   fclose(fp_lookup);
-   fclose(fp_false_lookup);
-   fclose(fp_agg_insert);
-   fclose(fp_agg_lookup);
-   fclose(fp_agg_fp);
-   fclose(fp_agg_del);
-
-   return;
-
-
-
-
-}
 
 template <typename Filter, typename Key, typename Val>
 __host__ void tcqf_find_first_fill(uint64_t num_bits){
@@ -1354,39 +873,161 @@ __host__ void tcqf_find_first_fill(uint64_t num_bits){
 //    tcqf_find_first_fill<tcqf_no_back, uint64_t, uint16_t>(num_bits);
 
 // }
-template <typename Filter, typename Val>
-__host__ void fp_wrapper(const std::string& filename){
-   tcqf_get_fp<Filter, Val>(filename, 22, 1, true);
-}
-
-template <typename Filter, typename Val>
-__host__ void test_filter_batched(const std::string& filename){
 
 
-   //test_tcqf_speed<Filter>(filename, 20, 20, true);
-   test_tcqf_speed<Filter, Val>(filename, 22, 20, true);
-   test_tcqf_speed<Filter, Val>(filename, 24, 20, false);
-   test_tcqf_speed<Filter, Val>(filename, 26, 20, false);
-   test_tcqf_speed<Filter, Val>(filename, 28, 20, false);
-   test_tcqf_speed<Filter, Val>(filename, 30, 20, false);
+__host__ void test_twelve_16(){
 
-}
-
-
-__host__ void tcqf_get_fp(){
-
-   fp_wrapper<tcqf_twelve, uint16_t>("fp_results/12");
-   fp_wrapper<tcqf_twelve_16, uint16_t>("fp_results/12_16");
-   fp_wrapper<tcqf_twelve_8, uint16_t>("fp_results/12_8");
-   fp_wrapper<tcqf_twelve_12, uint16_t>("fp_results/12_12");
-   fp_wrapper<tcqf_twelve_32, uint16_t>("fp_results/12_32");
-   fp_wrapper<tcqf_16_16, uint16_t>("fp_results/16_16");
-   fp_wrapper<tcqf_16_32, uint16_t>("fp_results/16_32");
-   fp_wrapper<tcqf_8_8, uint8_t>("fp_results/8_8");
+   printf("test_twelve_16\n");
+   using tcqf_twelve_16_1 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 1, 16, poggers::insert_schemes::blocked_bucket_insert<5>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcqf_twelve_16_2 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 2, 16, poggers::insert_schemes::blocked_bucket_insert<5>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcqf_twelve_16_4 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 4, 16, poggers::insert_schemes::blocked_bucket_insert<5>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcqf_twelve_16_8 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 8, 16, poggers::insert_schemes::blocked_bucket_insert<5>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcqf_twelve_16_16 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 16, 16, poggers::insert_schemes::blocked_bucket_insert<5>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
 
+   test_tcqf_speed<tcqf_twelve_16_1, uint16_t>("tcqf_twelve_16_1 ", 28, 20);
+   test_tcqf_speed<tcqf_twelve_16_2, uint16_t>("tcqf_twelve_16_2 ", 28, 20);
+   test_tcqf_speed<tcqf_twelve_16_4, uint16_t>("tcqf_twelve_16_4 ", 28, 20);
+   test_tcqf_speed<tcqf_twelve_16_8, uint16_t>("tcqf_twelve_16_8 ", 28, 20);
+   test_tcqf_speed<tcqf_twelve_16_16, uint16_t>("tcqf_twelve_16_16", 28, 20);
+
+   printf("\n\n\n");
 
 }
+
+__host__ void test_twelve_8(){
+
+   printf("test_twelve_8\n");
+   using tcqf_twelve_8_1 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 1, 8, poggers::insert_schemes::blocked_bucket_insert<10>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcqf_twelve_8_2 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 2, 8, poggers::insert_schemes::blocked_bucket_insert<10>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcqf_twelve_8_4 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 4, 8, poggers::insert_schemes::blocked_bucket_insert<10>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcqf_twelve_8_8 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 8, 8, poggers::insert_schemes::blocked_bucket_insert<10>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   //using tcqf_twelve_16_16 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 16, 16, poggers::insert_schemes::blocked_bucket_insert<5>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+
+
+   test_tcqf_speed<tcqf_twelve_8_1, uint16_t>("tcqf_twelve_8_1 ", 28, 20);
+   test_tcqf_speed<tcqf_twelve_8_2, uint16_t>("tcqf_twelve_8_2 ", 28, 20);
+   test_tcqf_speed<tcqf_twelve_8_4, uint16_t>("tcqf_twelve_8_4 ", 28, 20);
+   test_tcqf_speed<tcqf_twelve_8_8, uint16_t>("tcqf_twelve_8_8 ", 28, 20);
+   //test_tcqf_speed<tcqf_twelve_16_16, uint16_t>("tcqf_twelve_16_16", 28, 20);
+
+   printf("\n\n\n");
+
+}
+
+__host__ void test_twelve_12(){
+
+   printf("test_twelve_12\n");
+   using tcqf_twelve_12_1 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 1, 12, poggers::insert_schemes::blocked_bucket_insert<6>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcqf_twelve_12_2 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 2, 12, poggers::insert_schemes::blocked_bucket_insert<6>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcqf_twelve_12_4 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 4, 12, poggers::insert_schemes::blocked_bucket_insert<6>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   //using tcqf_twelve_12_8 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 8, 8, poggers::insert_schemes::blocked_bucket_insert<5>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   //using tcqf_twelve_16_16 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 16, 16, poggers::insert_schemes::blocked_bucket_insert<5>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+
+
+   test_tcqf_speed<tcqf_twelve_12_1, uint16_t>("tcqf_twelve_12_1 ", 28, 20);
+   test_tcqf_speed<tcqf_twelve_12_2, uint16_t>("tcqf_twelve_12_2 ", 28, 20);
+   test_tcqf_speed<tcqf_twelve_12_4, uint16_t>("tcqf_twelve_12_4 ", 28, 20);
+   //test_tcqf_speed<tcqf_twelve_12_8, uint16_t>("tcqf_twelve_12_8 ", 28, 20);
+   //test_tcqf_speed<tcqf_twelve_16_16, uint16_t>("tcqf_twelve_16_16", 28, 20);
+
+   printf("\n\n\n");
+
+}
+
+using tcqf_twelve_32 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 4, 32, poggers::insert_schemes::blocked_bucket_insert<2>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+
+__host__ void test_twelve_32(){
+
+   printf("test_twelve_32\n");
+   using tcqf_twelve_32_1 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 1, 32, poggers::insert_schemes::blocked_bucket_insert<2>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcqf_twelve_32_2 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 2, 32, poggers::insert_schemes::blocked_bucket_insert<2>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcqf_twelve_32_4 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 4, 32, poggers::insert_schemes::blocked_bucket_insert<2>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcqf_twelve_32_8 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 8, 32, poggers::insert_schemes::blocked_bucket_insert<2>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcqf_twelve_32_16 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 16, 32, poggers::insert_schemes::blocked_bucket_insert<2>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcqf_twelve_32_32 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 32, 32, poggers::insert_schemes::blocked_bucket_insert<2>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+
+
+   test_tcqf_speed<tcqf_twelve_32_1, uint16_t>("tcqf_twelve_32_1 ", 28, 20);
+   test_tcqf_speed<tcqf_twelve_32_2, uint16_t>("tcqf_twelve_32_2 ", 28, 20);
+   test_tcqf_speed<tcqf_twelve_32_4, uint16_t>("tcqf_twelve_32_4 ", 28, 20);
+   test_tcqf_speed<tcqf_twelve_32_8, uint16_t>("tcqf_twelve_32_8 ", 28, 20);
+   test_tcqf_speed<tcqf_twelve_32_16, uint16_t>("tcqf_twelve_32_16", 28, 20);
+   test_tcqf_speed<tcqf_twelve_32_32, uint16_t>("tcqf_twelve_32_32", 28, 20);
+
+   printf("\n\n\n");
+
+}
+
+__host__ void test_sixteen_16(){
+
+   printf("test_sixteen_16\n");
+   using tcqf_sixteen_16_1 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 1, 16, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcqf_sixteen_16_2 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 2, 16, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+
+   using tcqf_sixteen_16_4 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 4, 16, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+
+   using tcqf_sixteen_16_8 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 8, 16, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+
+   using tcqf_sixteen_16_16 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 16, 16, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+
+   test_tcqf_speed<tcqf_sixteen_16_1, uint16_t>("tcqf_sixteen_16_1 ", 28, 20);
+   test_tcqf_speed<tcqf_sixteen_16_2, uint16_t>("tcqf_sixteen_16_2 ", 28, 20);
+   test_tcqf_speed<tcqf_sixteen_16_4, uint16_t>("tcqf_sixteen_16_4 ", 28, 20);
+   test_tcqf_speed<tcqf_sixteen_16_8, uint16_t>("tcqf_sixteen_16_8 ", 28, 20);
+   test_tcqf_speed<tcqf_sixteen_16_16, uint16_t>("tcqf_sixteen_16_16", 28, 20);
+   
+   printf("\n\n\n");
+
+}
+
+__host__ void test_sixteen_32(){
+
+   printf("test_sixteen_32\n");
+   using tcqf_sixteen_32_1 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 1, 32, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcqf_sixteen_32_2 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 2, 32, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcqf_sixteen_32_4 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 4, 32, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcqf_sixteen_32_8 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 8, 32, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcqf_sixteen_32_16 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 16, 32, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcqf_sixteen_32_32 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 32, 32, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+
+
+   test_tcqf_speed<tcqf_sixteen_32_1, uint16_t>("tcqf_sixteen_32_1 ", 28, 20);
+   test_tcqf_speed<tcqf_sixteen_32_2, uint16_t>("tcqf_sixteen_32_2 ", 28, 20);
+   test_tcqf_speed<tcqf_sixteen_32_4, uint16_t>("tcqf_sixteen_32_4 ", 28, 20);
+   test_tcqf_speed<tcqf_sixteen_32_8, uint16_t>("tcqf_sixteen_32_8 ", 28, 20);
+   test_tcqf_speed<tcqf_sixteen_32_16, uint16_t>("tcqf_sixteen_32_16", 28, 20);
+   test_tcqf_speed<tcqf_sixteen_32_32, uint16_t>("tcqf_sixteen_32_32", 28, 20);
+
+   printf("\n\n\n");
+
+}
+
+
+__host__ void test_eight_8(){
+
+   printf("test_8_8\n");
+   using tcqf_8_8_1 = poggers::tables::static_table<uint64_t,uint8_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint8_t>::representation, 1, 8, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcqf_8_8_2 = poggers::tables::static_table<uint64_t,uint8_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint8_t>::representation, 2, 8, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcqf_8_8_4 = poggers::tables::static_table<uint64_t,uint8_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint8_t>::representation, 4, 8, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcqf_8_8_8 = poggers::tables::static_table<uint64_t,uint8_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint8_t>::representation, 8, 8, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+
+
+
+
+   test_tcqf_speed<tcqf_8_8_1, uint8_t>("tcqf_8_8_1 ", 28, 20);
+   test_tcqf_speed<tcqf_8_8_2, uint8_t>("tcqf_8_8_2 ", 28, 20);
+   test_tcqf_speed<tcqf_8_8_4, uint8_t>("tcqf_8_8_4 ", 28, 20);
+   test_tcqf_speed<tcqf_8_8_8, uint8_t>("tcqf_8_8_8 ", 28, 20);
+
+   printf("\n\n\n");
+
+}
+
+
+
+
+
 
 int main(int argc, char** argv) {
 
@@ -1453,18 +1094,28 @@ int main(int argc, char** argv) {
    //test_tcqf_speed("results/test", 6, 1, true);
    //test_tcqf_speed("results/test", 20, 1, true);
 
-   test_filter_batched<tcqf_twelve, uint16_t>("results/tcqf_twelve");
-   test_filter_batched<tcqf_twelve_16, uint16_t>("results/tcqf_twelve_16");
-   test_filter_batched<tcqf_twelve_8, uint16_t>("results/tcqf_twelve_8");
-   test_filter_batched<tcqf_twelve_12, uint16_t>("results/tcqf_twelve_12");
-   test_filter_batched<tcqf_twelve_32, uint16_t>("results/tcqf_twelve_32");
-   test_filter_batched<tcqf_16_16, uint16_t>("results/tcqf_sixteen_16");
-   test_filter_batched<tcqf_16_32, uint16_t>("results/tcqf_sixteen_32");
-   test_filter_batched<tcqf_8_8, uint8_t>("results/tcqf_8_8");
+   printf("Starting CG Tests\n");
 
-   printf("\n\n\nStarting FP Tests\n\n\n");
+   test_eight_8();
 
-   tcqf_get_fp();
+   test_twelve_8();
+
+   test_twelve_12();
+
+   test_twelve_16();
+
+   test_twelve_32();
+
+   test_sixteen_16();
+
+   test_sixteen_32();
+
+   
+
+   cudaDeviceSynchronize();
+
+   printf("Tests over\n");
+
 
 
    // test_first_fail(22);
