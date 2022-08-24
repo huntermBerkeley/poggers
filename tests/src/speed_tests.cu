@@ -620,10 +620,10 @@ int main(int argc, char** argv) {
 
    int nbits = 20;
 
-   //poggers::sizing::variadic_size test_size_24 (1ULL << nbits, (1ULL << nbits)/100);
+   poggers::sizing::variadic_size test_size_24 (1ULL << nbits, (1ULL << nbits)/100);
 
    //printf("22 size: %llu\n", test_size_24.total());
-   //test_speed_batched<tcqf, uint64_t, uint16_t>("results/test_32", &test_size_24, 20);
+   test_speed_batched<tcqf, uint64_t, uint16_t>("results/test_32", &test_size_24, 20);
    // test_speed_batched<tcqf, uint64_t, uint16_t>("results/test_24", generate_size(24), 20);
    // test_speed_batched<tcqf, uint64_t, uint16_t>("results/test_26", generate_size(26), 20);
    // test_speed_batched<tcqf, uint64_t, uint16_t>("results/test_28", generate_size(28), 20);
