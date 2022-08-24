@@ -51,6 +51,14 @@ __global__ void test_allocator_one_thread(global_ptr * heap){
 
       addresses[i] = (uint *) new_allocator->malloc(4, heap);
 
+      addresses[i][0] = (uint) i;
+
+   }
+
+   for (uint i = 0; i < test_size; i++){
+      if (addresses[i][0] != i){
+         printf("%u failed\n", i);
+      }
    }
 
 
@@ -65,6 +73,76 @@ __global__ void test_allocator_one_thread(global_ptr * heap){
    heap->free(addresses);
 
    allocator::free_allocator(heap, new_allocator);
+
+
+}
+
+__global__ void test_allocator_many_threads(global_ptr * heap, allocator * new_allocator){
+
+   uint64_t tid = threadIdx.x+blockIdx.x*blockDim.x;
+
+   const uint64_t test_size = 32000;
+
+   if (tid >= test_size) return;
+
+
+   uint * my_address = (uint *) new_allocator->malloc(4, heap);
+
+
+   __syncthreads();
+
+   new_allocator->stack_free(my_address);
+
+   return;
+
+
+}
+
+//given the allocator is warmed up with a few runs, generate a dataset that will repeatedly malloc and free
+//to force shifting.
+__global__ void test_allocator_synthetic_workload(global_ptr * heap, allocator * new_allocator, uint64_t test_size, int num_rounds){
+
+   uint64_t tid = threadIdx.x+blockIdx.x*blockDim.x;
+
+   //const uint64_t test_size = 32000;
+
+   if (tid >= test_size) return;
+
+
+   uint * my_addresses[2];
+
+
+
+   for (int i = 0; i < num_rounds; i++){
+
+      my_addresses[0] = nullptr;
+      my_addresses[1] = nullptr;
+
+      while (my_addresses[0] == nullptr){
+         my_addresses[0] = (uint *) new_allocator->malloc(4, heap);
+      }
+
+      while (my_addresses[1] == nullptr){
+         my_addresses[0] = (uint *) new_allocator->malloc(4, heap);
+      }
+
+      new_allocator->stack_free(my_addresses[0]);
+
+      my_addresses[0] = nullptr;
+
+      while (my_addresses[0] == nullptr){
+         my_addresses[0] = (uint *) new_allocator->malloc(4, heap);
+      }
+
+      new_allocator->stack_free(my_addresses[1]);
+      new_allocator->stack_free(my_addresses[0]);
+
+
+   }
+
+
+
+   return;
 
 
 }
@@ -112,6 +190,67 @@ __global__ void test_allocator_variations(global_ptr * heap){
 
 }
 
+
+//allocator code to get host handles
+
+__global__ void allocate_stack(allocator ** stack_ptr, global_ptr * heap){
+
+
+   uint64_t tid = threadIdx.x+blockIdx.x*blockDim.x;
+
+   if (tid != 0) return;
+
+   allocator * my_stack = allocator::init(heap);
+
+   stack_ptr[0] = my_stack;
+
+   return;
+
+}
+
+
+__host__ allocator * host_allocate_allocator(global_ptr * heap){
+
+   allocator ** stack_ptr;
+
+   cudaMallocManaged((void **)&stack_ptr, sizeof(allocator *));
+
+   allocate_stack<<<1,1>>>(stack_ptr, heap);
+
+   cudaDeviceSynchronize();
+
+   allocator * to_return = stack_ptr[0];
+
+   cudaFree(stack_ptr);
+
+   return to_return;
+
+
+
+}
+
+__global__ void dev_free_stack(global_ptr * heap, allocator * stack_to_free){
+
+   uint64_t tid = threadIdx.x+blockIdx.x*blockDim.x;
+
+   if (tid != 0) return;
+
+   allocator::free_allocator(heap, stack_to_free);
+
+}
+
+__host__ void host_free_allocator(global_ptr * heap, allocator * stack_to_free){
+
+
+   dev_free_stack<<<1,1>>>(heap, stack_to_free);
+
+   cudaDeviceSynchronize();
+
+   return;
+
+
+}
+
 int main(int argc, char** argv) {
 
 
@@ -128,11 +267,30 @@ int main(int argc, char** argv) {
 
    test_allocator_variations<<<1,1>>>(heap);
 
+
+   cudaDeviceSynchronize();
+
+   printf("Starting multi threaded tests\n");
+
+   allocator * my_allocator = host_allocate_allocator(heap);
+
+   cudaDeviceSynchronize();
+
+   test_allocator_many_threads<<<(32000-1)/1024+1,1024>>>(heap, my_allocator);
+
+   cudaDeviceSynchronize();
+
+   uint64_t test_size = 32000;
+
+   test_allocator_synthetic_workload<<<(test_size -1)/1024+1, 1024>>>(heap, my_allocator, test_size, 1);
+
+   cudaDeviceSynchronize();
+
+   host_free_allocator(heap, my_allocator);
+
    cudaDeviceSynchronize();
 
    global_ptr::free_heap(heap);
-
-   cudaDeviceSynchronize();
 
 
 }

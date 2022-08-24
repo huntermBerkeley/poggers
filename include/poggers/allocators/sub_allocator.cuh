@@ -1,4 +1,4 @@
-#ifndef SUB_ALLOCATOR
+  #ifndef SUB_ALLOCATOR
 #define SUB_ALLOCATOR
 
 
@@ -79,6 +79,9 @@ struct sub_allocator {
 			#endif
 			new_allocator->managers[i] = stack_type::init_from_free_list(heap, 1ULL << (2+i));
 
+			//set the pointer to themselves for a closed loop
+			new_allocator->managers[i]->set_prev(new_allocator->managers[i]);
+
 		}
 
 		return new_allocator;
@@ -113,6 +116,15 @@ struct sub_allocator {
 
 	}
 
+	__device__ bool swap_manager_atomic(int p2, stack_type * existing_manager, stack_type * new_manager){
+
+
+		uint64_t result = atomicCAS((unsigned long long int *) managers + p2, (unsigned long long int) existing_manager, (unsigned long long int) new_manager);
+
+		return (result == ((uint64_t) existing_manager));
+
+	}
+
 
 	__device__ void * malloc(uint64_t bytes_requested, header * heap){
 
@@ -128,6 +140,10 @@ struct sub_allocator {
 
 		while (true){
 
+
+		//grab the local manager
+		//and attempt to scan
+		//scan until either nullptr or successful malloc
 		stack_type * local_manager = managers[p2_needed];
 
 
@@ -136,6 +152,7 @@ struct sub_allocator {
 			void * malloced = local_manager->malloc();
 
 			if (malloced == nullptr){
+				//cycle
 				local_manager = local_manager->get_next_atomic();
 
 
@@ -149,6 +166,10 @@ struct sub_allocator {
 				if (local_manager == managers[p2_needed]){
 					return malloced;
 				}
+
+				//otherwise continue the swap operation
+				//one thread grabs the swap head
+				//all followers then return as normal.
 
 				//we need
 
@@ -167,6 +188,8 @@ struct sub_allocator {
 				//all others should return their malloced data and continue
 
 
+				//This lock signifies competition between threads that have traversed + malloced
+
 				if (!local_manager->request_lock()){
 					//the local manager is already being worked on! I can safely leave
 					return malloced;
@@ -183,6 +206,11 @@ struct sub_allocator {
 				//do I need to load these atomically?
 				stack_type * A = managers[p2_needed];
 
+
+				//need to make sure no one else messes with the node structure while we allocate
+				//mallocs happen uninterrupted, but no one else can claim the node being moved
+				//and new new allocations can occur
+				//this should be fine as by construction this node is still serving mallocs.
 				A->stall_lock();
 
 
@@ -191,6 +219,8 @@ struct sub_allocator {
 				//C comes locked!
 				stack_type * C = local_manager;
 
+
+				//The previous of the head of the list is 
 				stack_type * end_of_C = A->get_prev_atomic();
 
 
@@ -246,7 +276,10 @@ struct sub_allocator {
 				//A->C->B->C->B
 
 				//consider atomic swap here
-				managers[p2_needed] = C;
+				//atomicCAS((unsigned_long long int *) managers + p2_needed, managers[p2_needed], C);
+
+				swap_manager_atomic(p2_needed, managers[p2_needed], C);
+				//managers[p2_needed] = C;
 				__threadfence();
 
 
@@ -270,56 +303,80 @@ struct sub_allocator {
 				}
 
 
-
+			//not necessary handled by main if case
+			//local_manager = local_manager->get_next_atomic();
 
 			}
 
 
-		}
+			//space to malloc a new one!
 
-		}
-
-
-		//we've hit nullptr, request new!
-
-		if (managers[p2_needed]->request_lock()){
+			//to prevent 30000 identical allocations, you must lock the head
+			//This means that nodes can stall in this loop when other nodes are being shifted
+			//only occurs iff 
+			// 1) the node being moved is at the end of the list AND
+			// 2) the node is filled as the movement happens.
+			if (managers[p2_needed]->request_lock()){
 
 			//I own the lock, append to this manager
-			stack_type * new_stack = stack_type::init_from_free_list(heap, 1ULL << (2+p2_needed));
+				stack_type * new_stack = stack_type::init_from_free_list(heap, 1ULL << (2+p2_needed));
 
-			if (new_stack != nullptr){
+				if (new_stack != nullptr){
 
-				//lock just in case someone else sees us mid update
-				new_stack->stall_lock();
+					//lock just in case someone else sees us mid update
+					new_stack->stall_lock();
 
-				new_stack->set_next(managers[p2_needed]);
-				new_stack->set_prev(managers[p2_needed->get_prev_atomic()]);
+					//register the stack here!
+					// hash_table->insert();
 
-				managers[p2_needed]->set_prev(new_stack);
+					new_stack->set_next(managers[p2_needed]);
+					new_stack->set_prev(managers[p2_needed]->get_prev_atomic());
 
-				__threadfence();
+					managers[p2_needed]->set_prev(new_stack);
 
-				void * new_malloc = new_stack->malloc();
+					__threadfence();
 
-				managers[p2_needed->unlock()];
-				new_stack->unlock();
-				//local_manager->set_next(new_stack);
+					void * new_malloc = new_stack->malloc();
 
-				//new manager is included, continue!
-				return new_malloc;
+					//managers[p2_needed]->unlock();
+
+					swap_manager_atomic(p2_needed, managers[p2_needed], new_stack);
+					//managers[p2_needed] = new_stack;
+					__threadfence();
+
+					new_stack->get_next_atomic()->unlock();
+					new_stack->unlock();
+					//local_manager->set_next(new_stack);
+
+					//new manager is included, continue!
+					return new_malloc;
 
 
-			} else {	
+				} else {	
 
-				//throw an error, stack is full
-				printf("Error: Can't allocate new stack\n");
-				__trap();
+					//throw an error, stack is full
+					//printf("Error: Can't allocate new stack\n");
+					//__trap();
+					return nullptr;
+
+				}
+
+			} else {
+
+				//think I need to reset local manager
+				local_manager = managers[p2_needed];
+
 
 			}
 
 
+			//stack_type * new_stack = stack_type::init_from_free_list(heap, 1ULL << (2+i));
+
+
+
 
 		}
+
 		
 
 

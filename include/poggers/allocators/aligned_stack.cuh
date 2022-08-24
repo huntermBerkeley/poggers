@@ -579,7 +579,7 @@ struct aligned_manager{
 
 	__device__ my_type * get_prev_atomic(){
 
-		return (my_type *) atomicCAS((unsigned long long int *)&ptr_to_next, 0ULL, 0ULL);
+		return (my_type *) atomicCAS((unsigned long long int *)&ptr_to_prev, 0ULL, 0ULL);
 
 	}
 
@@ -621,6 +621,10 @@ struct aligned_manager{
 		poggers::helpers::typed_atomic_write<uint>(&counter, 1U, 0U);
 	}
 
+	//alias cause I'm bad at remembering names.
+	__device__ void unlock(){
+		free_lock();
+	}
 
 
 };
