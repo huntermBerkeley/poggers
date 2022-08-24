@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.18 FATAL_ERROR)
 
-project(poggers VERSION 0.0.1 LANGUAGES CXX CUDA)
+project(poggers VERSION 0.1.0 LANGUAGES CXX CUDA)
 
 
 

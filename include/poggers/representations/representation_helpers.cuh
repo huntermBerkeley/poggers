@@ -67,6 +67,14 @@ __device__ __inline__ bool typed_atomic_write<uint16_t>(uint16_t * backing, uint
 
 }
 
+__device__ __inline__ bool typed_atomic_write<unsigned short>(unsigned short * backing, unsigned short item, unsigned short replace){
+
+
+	return (atomicCAS((unsigned short int *) backing, (unsigned short int) item, (unsigned short int) replace) == item);
+
+}
+
+
 
 template<>
 __device__ __inline__ bool typed_atomic_write<uint32_t>(uint32_t * backing, uint32_t item, uint32_t replace){
