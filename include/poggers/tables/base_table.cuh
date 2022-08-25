@@ -244,12 +244,12 @@ public:
  
 	}
 
-	__host__ uint64_t get_block_size(uint64_t nitems_to_insert){
+	__host__ static uint64_t get_block_size(uint64_t nitems_to_insert){
 		return 1024;
 	}
 
 
-	__host__ uint64_t get_num_blocks(uint64_t nitems_to_insert){
+	__host__ static uint64_t get_num_blocks(uint64_t nitems_to_insert){
 
 		return (Partition_Size*nitems_to_insert-1)/get_block_size(nitems_to_insert) +1;
 	}

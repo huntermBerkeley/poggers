@@ -212,9 +212,6 @@ __global__ void speed_insert_kernel_one_thread(Filter * filter, Key * keys, Val 
    }
 
 
-
-
-
    //assert(filter->insert(tile, keys[tid], vals[tid]));
 
 
