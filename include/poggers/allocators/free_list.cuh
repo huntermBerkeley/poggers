@@ -39,7 +39,23 @@ namespace poggers {
 namespace allocators { 
 
 
+
+
+
 struct header;
+
+template <typename free_list_type>
+__global__ void host_malloc_aligned_kernel(free_list_type * heap, void ** writable_address, uint64_t num_bytes, uint64_t alignment, int offset){
+
+
+	void * allocation = heap->malloc_aligned(num_bytes, alignment, offset);
+
+	writable_address[0] = allocation;
+
+	return;
+
+
+}
 
 struct header_lock_dist {
 
@@ -286,6 +302,18 @@ struct header {
 		void * allocation;
 
 		cudaMalloc((void **)&allocation, num_bytes);
+
+		init_heap_kernel<header><<<1,1>>>(allocation, num_bytes);
+
+		return (header *) allocation;
+
+	}
+
+	__host__ static header * init_heap_managed(uint64_t num_bytes){
+
+		void * allocation;
+
+		cudaMallocManaged((void **)&allocation, num_bytes);
 
 		init_heap_kernel<header><<<1,1>>>(allocation, num_bytes);
 
@@ -1573,14 +1601,32 @@ struct header {
 
 	}
 
+	__host__ void * host_malloc_aligned(uint64_t bytes_requested, uint64_t alignment, int offset){
+
+		void ** temp_write_space;
+		cudaMallocManaged(&temp_write_space, sizeof(void *));
+
+		if (temp_write_space == nullptr){
+			printf("No space for cudaMalloc\n");
+			abort();
+		}
+
+		host_malloc_aligned_kernel<header><<<1,1>>>(this, temp_write_space, bytes_requested, alignment, offset);
+		cudaDeviceSynchronize();
+
+		void * final_address = temp_write_space[0];
+		cudaFree(temp_write_space);
+
+		return final_address;
+
+	}
+
 
 
 	__device__ void * malloc(uint64_t bytes_requested){
 
 		//bytes of an object contains header + footer
-		bytes_requested += 48;
-
-		return find_first_fit_end_node(bytes_requested);
+		return malloc_safe(bytes_requested);
 
 	}
 

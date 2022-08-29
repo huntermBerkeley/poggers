@@ -57,7 +57,7 @@ public:
 	//pull in hasher - need it's persistent storage
 
 	__host__ __device__ linearProber(uint64_t seed){
-		my_hasher.init(seed);;
+		my_hasher.init(seed);
 	}
 
 

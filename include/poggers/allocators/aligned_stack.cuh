@@ -567,6 +567,14 @@ struct aligned_manager{
 
 	}
 
+	__device__ static uint64_t get_home_address_uint(void * ext_address){
+
+		pointer_type * ext_as_obj = (pointer_type * ) ext_address;
+
+		return ext_as_obj->get_home_address();
+
+	}
+
 	__device__ my_type * get_next(){
 		return ptr_to_next;
 	}
