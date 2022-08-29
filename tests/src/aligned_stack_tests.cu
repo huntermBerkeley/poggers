@@ -80,7 +80,13 @@ __global__ void test_multi_thread(stack * my_stack){
 
 
    for (int i = 0; i < test_size; i++){
-          my_stack->free(addresses[i]);
+
+      if (addresses == nullptr){
+         printf("Something wrong, address set to nullptr\n");
+      }
+      else {
+         my_stack->free(addresses[i]);
+      }
      
    }
 

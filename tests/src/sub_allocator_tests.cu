@@ -10,7 +10,7 @@
 
 #define DEBUG_ASSERTS 0
 
-#define DEBUG_PRINTS 1
+#define DEBUG_PRINTS 0
 
 
 
@@ -91,7 +91,14 @@ __global__ void test_allocator_many_threads(global_ptr * heap, allocator * new_a
 
    __syncthreads();
 
-   new_allocator->stack_free(my_address);
+   if (my_address == nullptr){
+      //printf("f");
+      printf("Allocator failed?\n");
+   } else {
+      new_allocator->stack_free(my_address);
+   }
+
+  
 
    return;
 
@@ -111,7 +118,9 @@ __global__ void test_allocator_synthetic_workload(global_ptr * heap, allocator *
 
    uint * my_addresses[2];
 
-
+   //This is not the source of the stall
+   //if we make it to the loops we always succeed
+   //It's something about booting new managers
 
    for (int i = 0; i < num_rounds; i++){
 
@@ -122,8 +131,10 @@ __global__ void test_allocator_synthetic_workload(global_ptr * heap, allocator *
          my_addresses[0] = (uint *) new_allocator->malloc(4, heap);
       }
 
+      //printf("Progress on 0\n");
+
       while (my_addresses[1] == nullptr){
-         my_addresses[0] = (uint *) new_allocator->malloc(4, heap);
+         my_addresses[1] = (uint *) new_allocator->malloc(4, heap);
       }
 
       new_allocator->stack_free(my_addresses[0]);
@@ -136,6 +147,8 @@ __global__ void test_allocator_synthetic_workload(global_ptr * heap, allocator *
 
       new_allocator->stack_free(my_addresses[1]);
       new_allocator->stack_free(my_addresses[0]);
+
+      //printf("Making progress\n");
 
 
    }
@@ -279,6 +292,8 @@ int main(int argc, char** argv) {
    test_allocator_many_threads<<<(32000-1)/1024+1,1024>>>(heap, my_allocator);
 
    cudaDeviceSynchronize();
+
+   printf("Starting synthetic tests\n");
 
    uint64_t test_size = 32000;
 

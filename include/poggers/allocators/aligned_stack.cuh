@@ -196,7 +196,7 @@ struct aligned_heap_ptr {
 
 		}
 
-		__device__ const uint64_t get_home_address(){
+		__device__ uint64_t get_home_address(){
 
 			uint64_t this_as_uint = (uint64_t) this;
 
