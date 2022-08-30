@@ -494,10 +494,6 @@ struct sub_allocator {
 
 	}
 
-	template <typename hash_table>
-	__device__ bool test_load(hash_table * cms_table){
-		return true;
-	}
 
 	template <typename hash_table>
 	__device__ void * malloc_free_table(uint64_t bytes_requested, hash_table * cms_table, header * heap){

@@ -28,4 +28,6 @@ ConfigureExecutable(sub_allocator_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/sub_all
 
 ConfigureExecutable(cms_init_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/cms_init_tests.cu" "${POGGERS_TESTS_BINARY_DIR}")
 
+ConfigureExecutable(cms_benchmarks "${CMAKE_CURRENT_SOURCE_DIR}/src/cms_benchmarks.cu" "${POGGERS_TESTS_BINARY_DIR}")
+
 #set_target_properties(separable_test PROPERTIES CUDA_SEPARABLE_COMPILATION ON)

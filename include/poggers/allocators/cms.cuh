@@ -106,6 +106,54 @@ __host__ allocator * host_allocate_sub_allocator(header * heap){
 
 }
 
+template <typename cms>
+__global__ void host_malloc_kernel(void ** stack_ptr, cms * shibboleth, uint64_t num_bytes){
+
+
+   uint64_t tid = threadIdx.x+blockIdx.x*blockDim.x;
+
+   if (tid != 0) return;
+
+   stack_ptr[0] = shibboleth->cms_malloc(num_bytes);
+
+   //stack_ptr[0] = my_stack;
+
+   return;
+
+}
+
+template <typename cms>
+__host__ void * host_malloc_wrapper(cms * shibboleth, uint64_t num_bytes){
+
+   void ** stack_ptr;
+
+   cudaMallocManaged((void **)&stack_ptr, sizeof(void *));
+
+   host_malloc_kernel<cms><<<1,1>>>(stack_ptr, shibboleth, num_bytes);
+
+   cudaDeviceSynchronize();
+
+   void * to_return = stack_ptr[0];
+
+   cudaFree(stack_ptr);
+
+   return to_return;
+
+
+}
+
+template <typename cms>
+__global__ void host_free_kernel(cms * shibboleth, void * to_free){
+	shibboleth->cms_free(to_free);
+}
+
+template <typename cms>
+__host__ void host_free_wrapper(cms * shibboleth, void * to_free){
+
+	host_free_kernel<cms><<<1,1>>>(shibboleth, to_free);
+
+}
+
 
 template <std::size_t bytes_per_substack, std::size_t num_suballocators, std::size_t maximum_p2>
 struct shibboleth {
@@ -243,14 +291,6 @@ struct shibboleth {
 
 		if (allocator::can_malloc(num_bytes)){
 
-			allocator * randomish_allocator = get_randomish_sub_allocator();
-
-			//void * ret_value = randomish_allocator->malloc_free_table<hash_table>(num_bytes, free_table, allocated_memory);
-			int * test_ptr;
-
-			//randomish_allocator->template test_load<int>(test_ptr);
-			//randomish_allocator->test_load<hash_table>(free_table);
-
 			return get_randomish_sub_allocator()->template malloc_free_table<hash_table>(num_bytes, free_table, allocated_memory);
 
 		} else {
@@ -259,6 +299,19 @@ struct shibboleth {
 
 		}
 
+	}
+
+	__host__ void * cms_host_malloc(uint64_t num_bytes){
+
+
+
+		return host_malloc_wrapper<my_type>(this, num_bytes);
+
+	}
+
+	__host__ void cms_host_free(void * address){
+
+		host_free_wrapper<my_type>(this, address);
 	}
 
 	__device__ void cms_free(void * uncasted_address){

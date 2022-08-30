@@ -94,6 +94,11 @@ int main(int argc, char** argv) {
 
    cms_single_threaded<<<1,1>>>(allocator);
 
+   cudaDeviceSynchronize();
+
+
+   cms_single_threaded<<<1, 100>>>(allocator);
+
 
    shibboleth::free_cms_allocator(allocator);
 
