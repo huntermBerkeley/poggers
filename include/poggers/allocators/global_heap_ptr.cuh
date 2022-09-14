@@ -15,11 +15,11 @@
 
 
 #ifndef DEBUG_ASSERTS
-#define DEBUG_ASSERTS 1
+#define DEBUG_ASSERTS 0
 #endif
 
 #ifndef DEBUG_PRINTS
-#define DEBUG_PRINTS 1
+#define DEBUG_PRINTS 0
 #endif
 
 

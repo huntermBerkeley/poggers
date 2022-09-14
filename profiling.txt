@@ -1,5 +1,1 @@
-srun -N 1 -n 1 nsys profile -o recordings/nsys-vqf-team -f true -t nvtx,cuda ./team_vqf_tests 28
-
-
-srun -N 1 -n 1 ncu -f -o recordings/ncu-team-vqf --set full ./team_vqf_tests 28
-
+srun -N 1 -n 1 ncu -f -o recordings/cms_benchmarking --set full --kernel-regex cms_enqueue ./tests/cms_benchmarks

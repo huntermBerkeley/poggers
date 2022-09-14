@@ -30,4 +30,16 @@ ConfigureExecutable(cms_init_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/cms_init_tes
 
 ConfigureExecutable(cms_benchmarks "${CMAKE_CURRENT_SOURCE_DIR}/src/cms_benchmarks.cu" "${POGGERS_TESTS_BINARY_DIR}")
 
-#set_target_properties(separable_test PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+
+ConfigureExecutable(cms_variation_benchmarks "${CMAKE_CURRENT_SOURCE_DIR}/src/cms_variation_benchmarks.cu" "${POGGERS_TESTS_BINARY_DIR}")
+
+#ConfigureExecutable(cms_fill_benchmarks "${CMAKE_CURRENT_SOURCE_DIR}/src/cms_fill_benchmarks.cu" "${POGGERS_TESTS_BINARY_DIR}")
+
+#target_compile_options(cms_fill_benchmarks PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:
+#    --relocatable-device-code=true	>)
+
+#set_target_properties(cms_fill_benchmarks PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
+
+ConfigureExecutable(bitarr_benchmark "${CMAKE_CURRENT_SOURCE_DIR}/src/bitarr_benchmark.cu" "${POGGERS_TESTS_BINARY_DIR}")
+
+ConfigureExecutable(one_thread_bitarr "${CMAKE_CURRENT_SOURCE_DIR}/src/one_thread_bitarr.cu" "${POGGERS_TESTS_BINARY_DIR}")

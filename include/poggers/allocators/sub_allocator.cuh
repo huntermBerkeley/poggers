@@ -31,6 +31,10 @@
 
 //a pointer list managing a set section o fdevice memory
 
+#ifndef POGGERS_LOG_PROMOTE
+
+#define POGGERS_LOG_PROMOTE
+
 __device__ int promote_to_log2(uint64_t size){
 
 	float log_of_size = __log2f((float) size);
@@ -38,6 +42,8 @@ __device__ int promote_to_log2(uint64_t size){
 	return (int) log_of_size;
 
 }
+
+#endif
 
 // __host__ const int host_promote_to_log2(uint64_t size){
 
@@ -821,11 +827,18 @@ struct sub_allocator {
 
 };
 
+#ifndef POGGERS_LOG2_TEMPLATE
+
+#define POGGERS_LOG2_TEMPLATE
+
 template <std::size_t x>
 struct log2_template { enum { value = 1 + log2_template<x/2>::value }; };
   
 template <> struct log2_template<1> { enum { value = 1 }; };
 
+
+
+#endif
 
 template <std::size_t bytes_per_substack, std::size_t max_size>
 struct sub_allocator_wrapper {

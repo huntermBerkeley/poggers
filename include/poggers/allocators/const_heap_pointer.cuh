@@ -10,7 +10,7 @@
 
 
 #ifndef DEBUG_ASSERTS
-#define DEBUG_ASSERTS 1
+#define DEBUG_ASSERTS 0
 #endif
 
 

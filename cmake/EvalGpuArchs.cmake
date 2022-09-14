@@ -38,8 +38,9 @@ int main(int argc, char** argv) {
       archs.insert(buff);
     }
   }
+  //empty arch defaults to 70 for building on V100
   if(archs.empty()) {
-    printf(\"ALL\");
+    printf(\"70\");
   } else {
     bool first = true;
     for(const auto& arch : archs) {

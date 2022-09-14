@@ -9,7 +9,11 @@
 #include <stdio.h>
 #include "assert.h"
 
-//a pointer list managing a set section o fdevice memory
+//a pointer list managing a set section of device memory
+
+
+//include reporter for generating usage reports
+#include <poggers/allocators/reporter.cuh>
 
 // #define DEBUG_ASSERTS 1
 
@@ -29,6 +33,12 @@
 
 //define CUTOFF_SIZE 1024
 #define CUTOFF_SIZE 50
+
+#if COUNTING_CYCLES
+#include <poggers/allocators/cycle_counting.cuh>
+#endif
+
+
 
 
 
@@ -1581,9 +1591,31 @@ struct header {
 	__device__ void * malloc_safe(uint64_t bytes_requested){
 
 		//bytes of an object contains header + footer
+
+		#if COUNTING_CYCLES
+		uint64_t heap_counter_start = clock64();
+		#endif
+
+
+
 		bytes_requested += 48;
 
-		return find_first_safe(bytes_requested);
+		void * my_malloc = find_first_safe(bytes_requested);
+
+		#if COUNTING_CYCLES
+			
+			uint64_t heap_counter_end = clock64();
+
+			uint64_t free_list_total_time = (heap_counter_end - heap_counter_start)/COMPRESS_VALUE;
+
+			atomicAdd((unsigned long long int *) &free_list_counter, (unsigned long long int) free_list_total_time);
+
+			atomicAdd((unsigned long long int *) &heap_traversals, (unsigned long long int) 1);
+
+
+		#endif
+
+		return my_malloc;
 
 	}
 
@@ -1597,7 +1629,26 @@ struct header {
 		assert(alignment % 16 == 0);
 		assert(offset % 16 == 0);
 
-		return find_first_safe_aligned(bytes_requested, alignment, offset);
+		#if COUNTING_CYCLES
+			uint64_t heap_counter_start = clock64();
+		#endif
+
+		void * my_malloc = find_first_safe_aligned(bytes_requested, alignment, offset);
+
+		#if COUNTING_CYCLES
+			
+			uint64_t heap_counter_end = clock64();
+
+			uint64_t free_list_total_time = (heap_counter_end - heap_counter_start)/COMPRESS_VALUE;
+
+			atomicAdd((unsigned long long int *) &free_list_counter, (unsigned long long int) free_list_total_time);
+
+			atomicAdd((unsigned long long int *) &heap_traversals, (unsigned long long int) 1);
+
+
+		#endif
+
+		return my_malloc;
 
 	}
 
@@ -1652,6 +1703,46 @@ struct header {
 
  		uint64_t tid = threadIdx.x + blockIdx.x*blockDim.x;
 		printf("%llu: Node at %p, size is %llu, next at %p, prev at %p, is head: %d, is_locked: %d, is alloced: %d, footer %llu\n", tid, this, lock_and_size.as_bitfield.size, get_next(), get_prev(), check_endpoint(), check_lock(), check_alloc(), get_footer()[0]);
+	}
+
+	__device__ void generate_report(reporter * my_reporter){
+
+		header * head = this;
+
+		header * loop_ptr = this;
+
+		//print_heap(this);
+
+		uint64_t largest = 0;
+
+		uint64_t free_size = loop_ptr->get_size();
+
+		loop_ptr = loop_ptr->get_next();
+
+		while (loop_ptr != head){
+
+			free_size += loop_ptr->get_size();
+
+			if (loop_ptr->get_size() > largest){
+				largest = loop_ptr->get_size();
+			}
+			loop_ptr = loop_ptr->get_next();
+
+
+
+		}
+
+		uint64_t total_size =  ((uint64_t) head->get_prev()) - ((uint64_t) head) + 48;
+
+		// printf("Head %llu\n", (uint64_t) head);
+		// printf("Head prev %llu\n", ((uint64_t) head->get_prev()));
+
+		// printf("Total size\n")
+
+		my_reporter->modify_heap_bytes_total(total_size);
+		my_reporter->modify_heap_bytes_free(free_size);
+		my_reporter->modify_fragmentation_count(largest);
+
 	}
 
 		

@@ -13,8 +13,13 @@
 
 
 #ifndef DEBUG_ASSERTS
-#define DEBUG_ASSERTS 1
+#define DEBUG_ASSERTS 0
 #endif
+
+#if COUNTING_CYCLES
+#include <poggers/allocators/cycle_counting.cuh>
+#endif
+
 
 
 
@@ -50,6 +55,13 @@ union unioned_bitfield {
 	uint as_uint;
 
 };
+
+template <typename stack>
+__global__ void stack_init_kernel(uint64_t superblock_as_uint, int bytes_in_use, int bytes_per_item){
+
+
+	stack::init_stack_helper(superblock_as_uint, bytes_in_use, bytes_per_item);
+}
 
 
 template <size_t bytes_used>
@@ -100,10 +112,102 @@ struct aligned_heap_ptr {
 
 		__host__ __device__ aligned_heap_ptr(){};
 
+
+		__device__ static void init_stack_helper(uint64_t superblock_as_uint, int bytes_in_use, int bytes_per_item){
+
+			uint64_t tid = threadIdx.x+blockIdx.x*blockDim.x;
+
+			my_type * modified_ptr = (my_type *) (superblock_as_uint + bytes_in_use + tid*bytes_per_item);
+
+			my_type * next_modified_ptr = (my_type *) (superblock_as_uint + bytes_in_use + (tid+1)*bytes_per_item);
+
+			if (modified_ptr->get_home_address() != superblock_as_uint){
+				return;
+			}
+
+			if (next_modified_ptr->get_home_address() == superblock_as_uint){
+				uint64_t next_offset = modified_ptr->get_offset_from_next(next_modified_ptr);
+				modified_ptr->distance_and_counter = my_type::merge_counter_and_pointer(0, next_offset);
+
+			} else {
+				modified_ptr->distance_and_counter = my_type::merge_counter_and_pointer(0, 0);
+
+			}
+			
+			return;
+
+
+
+
+
+
+		}
+
+		__device__ static my_type * init_stack_team(void * superblock_space , int bytes_in_use, int bytes_per_item){
+
+			#if COUNTING_CYCLES
+				
+			uint64_t stack_init_counter_start = clock64();
+
+			#endif
+
+			uint64_t superblock_as_uint = (uint64_t) superblock_space;
+
+			my_type * orig_modified_ptr = (my_type *) (superblock_as_uint + bytes_in_use);
+
+			uint64_t max_calls = (bytes_used-1)/bytes_per_item+1;
+
+			stack_init_kernel<my_type><<<(max_calls -1)/512+1, 512>>>(superblock_as_uint, bytes_in_use, bytes_per_item);
+
+			cudaDeviceSynchronize();
+
+			__threadfence();
+
+			#if COUNTING_CYCLES
+				
+				uint64_t stack_init_counter_end = clock64();
+
+				uint64_t aligned_stack_init_time = (stack_init_counter_end - stack_init_counter_start)/COMPRESS_VALUE;
+
+				atomicAdd((unsigned long long int *) &stack_init_counter, (unsigned long long int) aligned_stack_init_time);
+
+				atomicAdd((unsigned long long int *) &stack_init_traversals, (unsigned long long int) 1);
+
+
+			#endif
+
+
+			return orig_modified_ptr;
+
+
+
+
+		}
+
+		__device__ static my_type * init_stack(void * superblock_space, int bytes_in_use, int bytes_per_item){
+
+			//printf("Booting stack\n");
+
+			my_type * my_stack = init_stack_team(superblock_space, bytes_in_use, bytes_per_item);
+
+			//my_type * my_stack = init_stack_old(superblock_space, bytes_in_use, bytes_per_item);
+
+			//printf("Counted val: %d\n", my_stack->count_heap_valid());
+
+			return my_stack;
+
+		}
+
 		//request for a thread to allocate the entirety of a superblock to this sizing
 		//necessary for HOARD implementation
 		//might come back later with a parallel implementation for coop groups
-		__device__ static my_type * init_stack(void * superblock_space, int bytes_in_use, int bytes_per_item){
+		__device__ static my_type * init_stack_old(void * superblock_space, int bytes_in_use, int bytes_per_item){
+
+			#if COUNTING_CYCLES
+				
+			uint64_t stack_init_counter_start = clock64();
+
+			#endif
 
 
 
@@ -149,6 +253,19 @@ struct aligned_heap_ptr {
 			//assert(my_type::get_counter_from_mixed(modified_ptr[pointers_per_superblock -1].distance_and_counter) == 0);
 
 			__threadfence();
+
+			#if COUNTING_CYCLES
+				
+				uint64_t stack_init_counter_end = clock64();
+
+				uint64_t aligned_stack_init_time = (stack_init_counter_end - stack_init_counter_start)/COMPRESS_VALUE;
+
+				atomicAdd((unsigned long long int *) &stack_init_counter, (unsigned long long int) aligned_stack_init_time);
+
+				atomicAdd((unsigned long long int *) &stack_init_traversals, (unsigned long long int) 1);
+
+
+			#endif
 
 			//this is the head of the list
 			//printf("Ending allocation\n");
@@ -388,7 +505,8 @@ struct aligned_heap_ptr {
 
 			}
 
-			return counter;
+			//1 less than expected, head is not available for malloc.
+			return counter-1;
 
 		}
 
@@ -452,7 +570,8 @@ struct aligned_manager{
 
 	my_type * ptr_to_next;
 	my_type * ptr_to_prev;
-	uint64_t spacing;
+
+	void * my_suballocator;
 
 
 	//funcs needed
@@ -481,7 +600,7 @@ struct aligned_manager{
 		new_stack->ptr_to_next = nullptr; 
 		new_stack->ptr_to_prev = nullptr;
 
-		uint64_t address_as_uint = (uint64_t) ext_address;
+		//uint64_t address_as_uint = (uint64_t) ext_address;
 
 		//void * startup_address = (void *) (address_as_uint + offset_type::value);
 
@@ -543,7 +662,28 @@ struct aligned_manager{
 
 	__device__ void * malloc(){
 
-		return stack_head.malloc();
+		#if COUNTING_CYCLES
+			
+		uint64_t stack_counter_start = clock64();
+
+		#endif
+
+		void * my_malloc = stack_head.malloc();
+
+		#if COUNTING_CYCLES
+			
+		uint64_t stack_counter_end = clock64();
+
+		uint64_t aligned_stack_total_time = (stack_counter_end - stack_counter_start)/COMPRESS_VALUE;
+
+		atomicAdd((unsigned long long int *) &stack_counter, (unsigned long long int) aligned_stack_total_time);
+
+		atomicAdd((unsigned long long int *) &stack_traversals, (unsigned long long int) 1);
+
+
+		#endif
+
+		return my_malloc;
 
 	}
 
@@ -606,6 +746,18 @@ struct aligned_manager{
 		__threadfence();
 	}
 
+	__device__ void set_next_atomic(my_type * next){
+
+		atomicExch((unsigned long long int *)&ptr_to_next, (unsigned long long int) next);
+
+	}
+
+	__device__ void set_prev_atomic(my_type * prev){
+
+		atomicExch((unsigned long long int *)&ptr_to_prev, (unsigned long long int) prev);
+
+	}
+
 	//attempt to grab the lock
 	//if we fail, that simply means that someone else is already on it!
 	__device__ bool request_lock(){
@@ -633,6 +785,35 @@ struct aligned_manager{
 	__device__ void unlock(){
 		free_lock();
 	}
+
+
+	//PROFILING HELPERS 
+
+	//count total allocations available, if you know what my size is 
+	__device__ int count_total(int alignment_size){
+
+		return (bytes_given - sizeof(my_type))/(alignment_size);
+
+	}
+
+	//count total allocations used
+	__device__ int count_available(int alignment_size){
+
+		return stack_head.count_heap_valid();
+
+	}
+
+	//raw bytes available
+	__device__ int total_bytes(int alignment_size){
+		return bytes_given;
+	}
+
+	//raw bytes used
+	__device__ int bytes_used(int alignment_size){
+		return total_bytes(alignment_size) - count_available(alignment_size)*alignment_size;
+	}
+
+	//End of helpers
 
 
 };

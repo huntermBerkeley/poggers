@@ -12,7 +12,9 @@
 
 #define DEBUG_PRINTS 0
 
+#define SHOW_PROGRESS 0
 
+#define COUNTING_CYCLES 1
 
 #include <poggers/allocators/cms.cuh>
 
@@ -21,11 +23,19 @@
 #include <assert.h>
 #include <chrono>
 
-#define stack_bytes 262144
+//#define stack_bytes 262144
+
+
+
+
+//#define stack_bytes 4194304
 
 #define MEGABYTE 1024*1024
 
 #define GIGABYTE 1024*MEGABYTE
+
+#define stack_bytes 4*MEGABYTE
+
 
 
 using shibboleth = poggers::allocators::shibboleth<stack_bytes, 150, 8>;
@@ -110,20 +120,26 @@ __global__ void cms_enqueue_benchmark(queue * group_queue, shibboleth * cms){
 
    uint64_t tid = threadIdx.x+blockIdx.x*blockDim.x;
 
+   #if SHOW_PROGRESS
    if (tid % 100000 == 0){
       printf("%llu\n", tid);
    }
+   #endif
 
 
    for (uint64_t i = 0; i < items_per_thread; i++){
 
       queue_node * my_node = (queue_node *) cms->cms_malloc(sizeof(queue_node));
-      my_node->item = tid;
-      my_node->ptr_to_next = nullptr;
 
       if (my_node == nullptr){
-         printf("Missed %llu\n");
+         printf("Missed %llu\n", tid);
+      } else {
+         my_node->item = tid;
+         my_node->ptr_to_next = nullptr;
+
       }
+
+
 
       //group_queue->enqueue(my_node);
 
@@ -142,9 +158,11 @@ __global__ void cuda_enqueue_benchmark(){
 
    uint64_t tid = threadIdx.x+blockIdx.x*blockDim.x;
 
+   #if SHOW_PROGRESS
    if (tid % 100000 == 0){
       printf("%llu\n", tid);
    }
+   #endif
 
    for (uint64_t i = 0; i < items_per_thread; i++){
 
@@ -183,11 +201,11 @@ int main(int argc, char** argv) {
    //stack grouping will fix this but this benchmark is aboutr performance.
    //uint64_t cuda_items_to_enqueue = 20000000;
 
-   uint64_t items_to_enqueue = 25000000;
+   uint64_t items_to_enqueue = 100000000;
 
 
 
-   cudaDeviceSetLimit(cudaLimitMallocHeapSize, 3ULL*1024*1024*1024);
+   //cudaDeviceSetLimit(cudaLimitMallocHeapSize, 3ULL*1024*1024*1024);
 
    printf("Starting cuda test\n");
 
@@ -195,7 +213,7 @@ int main(int argc, char** argv) {
 
    auto cuda_start = std::chrono::high_resolution_clock::now();
 
-   cuda_enqueue_benchmark<<<(items_to_enqueue - 1)/block_size +1, block_size>>>();
+   //cuda_enqueue_benchmark<<<(items_to_enqueue - 1)/block_size +1, block_size>>>();
 
    cudaDeviceSynchronize();
 
@@ -207,6 +225,13 @@ int main(int argc, char** argv) {
 
 
    shibboleth * allocator = shibboleth::init(bytes_in_use);
+
+   cudaDeviceSynchronize();
+
+   printf("Report before\n");
+   allocator->host_report();
+
+   cudaDeviceSynchronize();
 
 
    queue * my_queue = (queue *) allocator->cms_host_malloc(sizeof(queue));
@@ -236,6 +261,12 @@ int main(int argc, char** argv) {
    std::cout << "cuda Malloced " << items_to_enqueue << " in " << cuda_diff.count() << " seconds\n";
 
    //cms_single_threaded<<<1, 100>>>(allocator);
+
+   cudaDeviceSynchronize();
+
+   allocator->host_report();
+
+   cudaDeviceSynchronize();
 
 
    shibboleth::free_cms_allocator(allocator);

@@ -9,6 +9,9 @@
 #include <poggers/allocators/aligned_stack.cuh>
 #include <poggers/allocators/sub_allocator.cuh>
 
+//new allocator with dead list support
+#include <poggers/allocators/dead_list_sub_allocator.cuh>
+
 #include "stdio.h"
 #include "assert.h"
 
@@ -33,7 +36,9 @@
 //sizing type for building the table
 #include <poggers/sizing/default_sizing.cuh>
 
-//A series of inclusions for building a poggers hash table
+
+//additional file for monitoring state of the system
+#include <poggers/allocators/reporter.cuh>
 
 
 #ifndef DEBUG_ASSERTS
@@ -56,6 +61,12 @@
 
 
 
+#if COUNTING_CYCLES
+#include <poggers/allocators/cycle_counting.cuh>
+#endif
+
+
+
 
 //a pointer list managing a set section o fdevice memory
 
@@ -70,7 +81,28 @@ namespace allocators {
 
 
 template <typename allocator>
-__global__ void allocate_stack(allocator ** stack_ptr, header * heap){
+__global__ void one_thread_report_kernel(allocator * my_allocator){
+
+
+   uint64_t tid = threadIdx.x+blockIdx.x*blockDim.x;
+
+   if (tid != 0) return;
+
+   my_allocator->one_thread_report();
+
+   return;
+
+}
+
+template <typename allocator>
+__host__ void host_report_wrapper(allocator * my_allocator){
+
+	one_thread_report_kernel<allocator><<<1,1>>>(my_allocator);
+
+}
+
+template <typename allocator>
+__global__ void allocate_sub_allocator(allocator ** stack_ptr, header * heap){
 
 
    uint64_t tid = threadIdx.x+blockIdx.x*blockDim.x;
@@ -92,7 +124,7 @@ __host__ allocator * host_allocate_sub_allocator(header * heap){
 
    cudaMallocManaged((void **)&stack_ptr, sizeof(allocator *));
 
-   allocate_stack<allocator><<<1,1>>>(stack_ptr, heap);
+   allocate_sub_allocator<allocator><<<1,1>>>(stack_ptr, heap);
 
    cudaDeviceSynchronize();
 
@@ -162,7 +194,9 @@ struct shibboleth {
 	using stack_type = aligned_manager<bytes_per_substack, false>;
 	using my_type = shibboleth<bytes_per_substack, num_suballocators, maximum_p2>;
 
-	using allocator = sub_allocator<bytes_per_substack, maximum_p2>;
+	using allocator = dead_list_sub_allocator<bytes_per_substack, maximum_p2>;
+	//using allocator = sub_allocator<bytes_per_substack, maximum_p2>;
+
 
 	using heap = header;
 
@@ -181,6 +215,10 @@ struct shibboleth {
 
 		//this is gonna be very cheeky
 		//an allocator can be hosted on its own memory!
+
+		#if COUNTING_CYCLES
+		poggers_reset_cycles();
+		#endif
 
 		my_type * host_cms = (my_type * ) malloc(sizeof(my_type)); 
 
@@ -256,6 +294,11 @@ struct shibboleth {
 	//to free, get handle to memory and just release
 	__host__ static void free_cms_allocator(my_type * dev_cms){
 
+
+		#if COUNTING_CYCLES
+		poggers_display_cycles();
+		#endif
+
 		my_type * host_cms = (my_type * ) malloc(sizeof(my_type));
 
 		cudaMemcpy(host_cms, dev_cms, sizeof(my_type), cudaMemcpyDeviceToHost);
@@ -289,16 +332,68 @@ struct shibboleth {
 	//we default to stack and only upgrade iff no stack is large enough to handle
 	__device__ void * cms_malloc(uint64_t num_bytes){
 
+
+		#if COUNTING_CYCLES
+		uint64_t kernel_start = clock64();
+		#endif
+
+
 		if (allocator::can_malloc(num_bytes)){
 
-			return get_randomish_sub_allocator()->template malloc_free_table<hash_table>(num_bytes, free_table, allocated_memory);
+			void * val_to_ret = get_randomish_sub_allocator()->template malloc_free_table<hash_table>(num_bytes, free_table, allocated_memory);
+
+			#if COUNTING_CYCLES
+			
+			uint64_t kernel_end = clock64();
+
+			uint64_t total_time = (kernel_end - kernel_start)/COMPRESS_VALUE;
+
+			atomicAdd((unsigned long long int *) &kernel_counter, (unsigned long long int) total_time);
+
+			atomicAdd((unsigned long long int *) &kernel_traversals, (unsigned long long int) 1);
+
+
+			#endif
+
+
+			return val_to_ret;
+
 
 		} else {
 
-			return allocated_memory->malloc(num_bytes);
+			void * val_to_ret = allocated_memory->malloc(num_bytes);
+
+			#if COUNTING_CYCLES
+			
+			uint64_t kernel_end = clock64();
+
+			uint64_t total_time = (kernel_end - kernel_start)/COMPRESS_VALUE;
+
+			atomicAdd((unsigned long long int *) &kernel_counter, (unsigned long long int) total_time);
+
+			atomicAdd((unsigned long long int *) &kernel_traversals, (unsigned long long int) 1);
+
+
+			#endif
+
+
+			return val_to_ret;
 
 		}
 
+	}
+
+
+	//force an allocation to fall back to the heap
+	//this is for the reporter to stop if from fucking up by creating a new stack
+	__device__ void * cms_malloc_force_heap(uint64_t num_bytes){
+
+		return allocated_memory->malloc(num_bytes);
+	}
+
+	__device__ void cms_free_force_heap(void * uncasted_address){
+
+		allocated_memory->free_safe(uncasted_address);
 	}
 
 	__host__ void * cms_host_malloc(uint64_t num_bytes){
@@ -335,6 +430,97 @@ struct shibboleth {
 	}
 
 
+	//local_thread generates and prints report for data struct
+	__device__ void one_thread_report(){
+
+		printf("Generating report...\n");
+
+		//force the reporter to live locally
+		reporter * my_reporter = (reporter * ) cms_malloc_force_heap(sizeof(reporter));
+
+		my_reporter->init();
+
+		__threadfence();
+
+		allocated_memory->generate_report(my_reporter);
+
+		for (int i =0; i < num_suballocators; i++){
+
+			//printf("%d reporting\n", i);
+			allocators[i]->report(my_reporter);
+		}
+
+		__threadfence();
+
+		uint64_t malloced = my_reporter->get_stack_bytes_malloced();
+		uint64_t free = my_reporter->get_stack_bytes_free();
+
+		double ratio = 1.0;
+
+
+		if (free == 0){
+			ratio = 0;
+		} else {
+			ratio = ratio*malloced/free;
+		}
+
+		
+
+
+
+		uint64_t dead_malloced = my_reporter->get_dead_bytes_malloced();
+		uint64_t dead_free = my_reporter->get_dead_bytes_free();
+
+
+		double dead_ratio = 1.0;
+
+
+		if (dead_free == 0){
+			dead_ratio = 0;
+		} else {
+			dead_ratio = dead_ratio*dead_malloced/dead_free;
+		}
+		
+
+
+		uint64_t heap_total = my_reporter->get_heap_bytes_total();
+
+		uint64_t heap_free = my_reporter->get_heap_bytes_free();
+
+		uint64_t heap_used = heap_total - heap_free;
+
+		uint64_t fragmentation_overhead = my_reporter->get_fragmentation();
+
+		//double heap_ratio;
+
+		double heap_ratio = ((double) heap_used)/heap_total;
+
+		double fragmentation = 1.0 - ((double)fragmentation_overhead)/heap_free;
+
+
+		printf("Live stacks using %llu bytes of %llu bytes given to substacks allocated, %f full\n", malloced, free, ratio);
+
+		printf("Dead stacks using %llu bytes of %llu bytes, %f ratio\n", dead_malloced, dead_free, dead_ratio);
+
+		printf("%llu of %llu stacks report being full\n", my_reporter->get_dead_stacks(), my_reporter->get_total_stacks());
+
+		printf("System Stack utilization: %llu/%llu %f\n", malloced+dead_malloced, free+dead_free, 1.0*(malloced+dead_malloced)/(free+dead_free));
+
+		printf("Heap using %llu/%llu, %f, fragmentation: %f\n", heap_used, heap_total, heap_ratio, fragmentation);
+
+		cms_free_force_heap(my_reporter);
+
+	}
+
+	__host__ void host_report(){
+		host_report_wrapper<my_type>(this);
+	}
+
+	__host__ static void print_info(){
+
+		printf("Allocator with %llu bytes per substack, %llu sub_allocators, size runs from 4-%llu\n", bytes_per_substack, num_suballocators, 1ULL << (2+maximum_p2));
+
+	}
 
 
 

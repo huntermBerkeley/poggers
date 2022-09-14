@@ -21,7 +21,7 @@ namespace cg = cooperative_groups;
  * IN PROGRESS - There seems to be a problem with resetting variadic sized tables
  * If possible, stick with default sizing until this is patched.
  * 
- * /
+ */
 
 
 namespace poggers {
