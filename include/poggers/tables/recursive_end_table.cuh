@@ -116,8 +116,13 @@ public:
 
 	}
 
+	//dummy templates to allow the end table to interface with any table type - any requests to the end table fail.
 	template <class... Us>
 	__device__ bool insert(Us... pargs){
+		return false;
+	}
+	template <class... Us>
+	__device__ bool insert_if_not_exists(Us... pargs){
 		return false;
 	}
 	template <class... Us>

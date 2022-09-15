@@ -8,6 +8,8 @@ ConfigureExecutable(test_key_val_pair "${CMAKE_CURRENT_SOURCE_DIR}/src/test_key_
 
 ConfigureExecutable(speed_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/speed_tests.cu" "${POGGERS_TESTS_BINARY_DIR}")
 
+ConfigureExecutable(kmer_speed_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/kmer_speed_tests.cu" "${POGGERS_TESTS_BINARY_DIR}")
+
 ConfigureExecutable(kmer_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/kmer_tests.cu" "${POGGERS_TESTS_BINARY_DIR}")
 
 ConfigureExecutable(power_2_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/power_2_tests.cu" "${POGGERS_TESTS_BINARY_DIR}")

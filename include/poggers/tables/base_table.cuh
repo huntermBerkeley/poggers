@@ -142,7 +142,6 @@ public:
 		return dev_version;
 
 
-
 	}
 
 	__host__ static void free_on_device(my_type * dev_version){
@@ -176,6 +175,29 @@ public:
 
 			if (Is_Recursive){
 				return secondary_table->insert(Insert_tile, key, val);
+			}
+
+			
+			return false;
+
+		}
+
+		
+
+	}
+
+
+	__device__ bool insert_if_not_exists(cg::thread_block_tile<Partition_Size> Insert_tile, Key key, Val val, Val & ext_val, bool & found){
+
+
+		// if (Insert_tile.thread_rank() == 0){ printf("Starting Test\n" );}
+
+		if (my_insert_scheme->insert_if_not_exists(Insert_tile, key, val, ext_val, found)){
+			return true;
+		} else {
+
+			if (Is_Recursive){
+				return secondary_table->insert_if_not_exists(Insert_tile, key, val, ext_val, found);
 			}
 
 			

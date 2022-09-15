@@ -24,7 +24,7 @@ namespace poggers {
 
 namespace representations { 
 
-template <typename Key, typename Val, typename Storage_type, std::size_t Bucket_Size, std::size_t Partition_Size>
+template <typename Key, typename Val, typename Storage_type, std::size_t Partition_Size, std::size_t Bucket_Size>
 //alignas(Recursive_size<(sizeof(Key) + sizeof(Val))>::result) 
 struct  twelve_bucket {
 
