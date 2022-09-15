@@ -175,7 +175,7 @@ __device__ inline bool typed_atomic_sub_write(storage_type * address_to_swap, ke
 
 
 	//if you do this you're a dumbass, just use a lossless SOA type
-	assert(num_bits != sizeof(key_type*4));
+	//assert(num_bits != sizeof(key_type*4));
 
 	//mask that defines only the lower num_bits bits
 	key_type KEY_MASK = (1ULL << num_bits) -1;
