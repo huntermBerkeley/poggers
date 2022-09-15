@@ -35,7 +35,7 @@ struct  internal_dynamic_container {
 		__host__ __device__ inline const SmallKey get_smallKey(Key ext_key){ 
 
 
-			SmallKey smaller_version = SmallKey{ext_key}; 
+			SmallKey smaller_version = (SmallKey) ext_key; 
 
 			if (smaller_version == get_empty()){
 				smaller_version += 1;

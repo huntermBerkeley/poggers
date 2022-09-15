@@ -210,15 +210,8 @@ public:
 
 		//if(insert_tile.thread_rank() == 0) printf("Inside of power of n insert\n");
 
-		uint64_t buckets[Max_Probes];
-		int fill [Max_Probes];
-
 
 		probing_scheme_type insert_probing_scheme(seed);
-
-		int i = 0;
-
-		int min_fill = Bucket_Size;
 
 		for (uint64_t insert_slot = insert_probing_scheme.begin(key); insert_slot != insert_probing_scheme.end(); insert_slot = insert_probing_scheme.next()){
 

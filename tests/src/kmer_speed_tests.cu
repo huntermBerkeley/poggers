@@ -560,8 +560,6 @@ int main(int argc, char** argv) {
    // printf("2^28\n");
    // test_speed<table_type, uint64_t, uint64_t>(&first_size_28);
 
-   int nbits = 20;
-
    poggers::sizing::variadic_size test_size_20 = generate_size(20);
 
 
