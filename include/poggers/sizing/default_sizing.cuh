@@ -72,6 +72,9 @@ public:
 		return i <= Num_Tables ? slots[i-1] : end();
 	}
 
+	__host__ void reset(){
+		i = 0;
+	}
 
 	__host__ uint64_t end(){
 		return ~uint64_t(0);
