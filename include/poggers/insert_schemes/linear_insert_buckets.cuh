@@ -328,7 +328,7 @@ public:
 
 		cudaFreeHost(host_version);
 
-		rep_type ret_val;
+		return ret_val;
 
 
 
