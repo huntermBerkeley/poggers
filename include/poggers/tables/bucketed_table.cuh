@@ -147,6 +147,7 @@ public:
 
 	__host__ static void free_on_device(my_type * dev_version){
 
+		printf("Freeing on Device\n");
 
 		my_type host_version;
 
