@@ -95,8 +95,13 @@ public:
 
 		uint64_t true_nslots = min_buckets;
 
+
+		#if DEBUG_PRINTS
+
 		printf("Constructing table wtih %llu buckets, %llu slots\n", true_nslots, true_nslots*Bucket_Size);
 		printf("Using %llu bytes, %llu bytes per item\n", true_nslots*sizeof(rep_type), sizeof(rep_type));
+
+		#endif
 
 
 		cudaMalloc((void **)& ext_slots, true_nslots*sizeof(rep_type));
