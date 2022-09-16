@@ -302,6 +302,24 @@ public:
 
 	}
 
+	__host__ uint64_t host_bytes_in_use_top(){
+
+
+		my_type * host_version;
+
+		cudaMallocHost((void **)&host_version, sizeof(my_type));
+
+		cudaMemcpy(host_version, this, sizeof(my_type), cudaMemcpyDeviceToHost);
+
+		uint64_t total_bytes = host_version->my_insert_scheme->host_bytes_in_use();
+
+		cudaFreeHost(host_version);
+
+		return total_bytes;
+
+
+	}
+
 
 
 };
