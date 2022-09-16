@@ -322,6 +322,10 @@ __host__ void test_speed_batched(const std::string& filename, Sizing_Type * Init
 
    cudaDeviceSynchronize();
 
+   printf("Filter using %llu bytes\n", test_filter->host_bytes_in_use());
+
+   cudaDeviceSynchronize();
+
    //init timing materials
    std::chrono::duration<double>  * insert_diff = (std::chrono::duration<double>  *) malloc(num_batches*sizeof(std::chrono::duration<double>));
    std::chrono::duration<double>  * query_diff = (std::chrono::duration<double>  *) malloc(num_batches*sizeof(std::chrono::duration<double>));
