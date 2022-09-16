@@ -486,6 +486,27 @@ public:
 
 	}
 
+	__device__ uint64_t bytes_in_use(){
+		return num_buckets*sizeof(rep_type);
+	}
+
+	__host__ uint64_t host_bytes_in_use(){
+
+		my_type * host_version;
+
+		cudaMallocHost((void **)&host_version, sizeof(my_type));
+
+		cudaMemcpy(host_version, this, sizeof(my_type), cudaMemcpyDeviceToHost);
+
+		uint64_t ret_val = host_version->num_buckets*sizeof(rep_type);
+
+		cudaFreeHost(host_version);
+
+		rep_type ret_val;
+
+
+
+	}
 
 
 };

@@ -130,6 +130,14 @@ public:
 		return false;
 	}
 
+	__host__ uint64_t host_bytes_in_use(){
+
+
+		return 0;
+
+	}
+
+
 
 
 

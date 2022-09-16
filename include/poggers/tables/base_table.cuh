@@ -276,6 +276,18 @@ public:
 		return (Partition_Size*nitems_to_insert-1)/get_block_size(nitems_to_insert) +1;
 	}
 
+	__host__ uint64_t host_bytes_in_use(){
+
+
+		uint64_t total_bytes = my_insert_scheme->host_bytes_in_use();
+
+		if (Is_Recursive){
+			total_bytes += secondary_table->host_bytes_in_use();
+		}
+
+		return total_bytes;
+
+
 
 
 };
