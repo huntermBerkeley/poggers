@@ -45,6 +45,8 @@
 
 #include <poggers/tables/bucketed_table.cuh>
 
+#include <poggers/representations/grouped_key_val_pair.cuh>
+
 #include <stdio.h>
 #include <iostream>
 #include <chrono>
@@ -90,10 +92,21 @@
 // };
 
 
+using grouped_items = typename poggers::representations::internal_key_val_storage<uint16_t, uint16_t>::type;
 
 
-using backing_table = poggers::tables::bucketed_table<uint64_t, uint16_t, poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<poggers::representations::key_val_pair, uint16_t>::representation>::representation, 1, 8, poggers::insert_schemes::linear_insert_bucket_scheme, 20, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-using tcqf = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<poggers::representations::key_val_pair, uint16_t>::representation>::representation, 1, 8, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher, true, backing_table>;
+//32 bit grouped
+//using backing_table = poggers::tables::bucketed_table<uint64_t, uint16_t, poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<poggers::representations::grouped_key_val_pair, uint16_t>::representation>::representation, 1, 8, poggers::insert_schemes::linear_insert_bucket_scheme, 20, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+//using tcqf = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<poggers::representations::grouped_key_val_pair, uint16_t>::representation>::representation, 1, 8, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher, true, backing_table>;
+
+//regular backend
+// using backing_table = poggers::tables::bucketed_table<uint64_t, uint16_t, poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<poggers::representations::key_val_pair, uint16_t>::representation>::representation, 1, 8, poggers::insert_schemes::linear_insert_bucket_scheme, 20, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+// using tcqf = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<poggers::representations::key_val_pair, uint16_t>::representation>::representation, 1, 8, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher, true, backing_table>;
+
+//16 bit grouped
+using backing_table = poggers::tables::bucketed_table<uint64_t, uint8_t, poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<poggers::representations::grouped_key_val_pair, uint8_t>::representation>::representation, 1, 8, poggers::insert_schemes::linear_insert_bucket_scheme, 20, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+using tcqf = poggers::tables::bucketed_table<uint64_t,uint8_t, poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<poggers::representations::grouped_key_val_pair, uint8_t>::representation>::representation, 1, 8, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher, true, backing_table>;
+
 
 //using tcqf_twelve = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 4, 16, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
@@ -529,20 +542,43 @@ __host__ void test_speed_batched(const std::string& filename, Sizing_Type * Init
 
 
 
-__host__ poggers::sizing::variadic_size generate_size(int nbits){
+__host__ poggers::sizing::size_in_num_slots<2> get_tcf_sizing(uint64_t num_bits){
 
-   uint64_t nslots = (1ULL << nbits);
+  uint64_t max_num_kmers = (1ULL << num_bits);
 
+  uint64_t max_slots = max_num_kmers*1.2;
 
-   poggers::sizing::variadic_size internal_size(nslots*.9, nslots*.11);
+  //90/11 split over size for forward and backing tables.
 
-   return internal_size;
+  poggers::sizing::size_in_num_slots<2> my_size(max_slots*90ULL/100ULL, max_slots*10ULL/100ULL);
+  return my_size;
 
 }
 
-
-
 int main(int argc, char** argv) {
+
+   // printf("Grouped item size: %d\n", sizeof(grouped_items));
+
+   // grouped_items test;
+
+   // for (uint16_t i = 0; i < 1000; i++){
+
+   //    for (uint16_t j=0; j < 1000; j++){
+
+   //       test = poggers::representations::join_in_storage<uint16_t, uint16_t, grouped_items>(i,j);
+
+   //       uint16_t stored_key = poggers::representations::retrieve_key_from_storage<uint16_t, uint16_t, grouped_items>(test);
+
+
+   //       uint16_t stored_val = poggers::representations::retrieve_val_from_storage<uint16_t, uint16_t, grouped_items>(test);
+
+   //       if (stored_key != i || stored_val != j){
+   //          printf("Displaying %lx, %u - %u, %u - %u\n", test, i, stored_key, j, stored_val);
+   //       }
+
+
+   //    }
+   // }
 
    // poggers::sizing::size_in_num_slots<1> first_size_20(1ULL << 20);
    // printf("2^20\n");
@@ -564,17 +600,24 @@ int main(int argc, char** argv) {
    // printf("2^28\n");
    // test_speed<table_type, uint64_t, uint64_t>(&first_size_28);
 
-   poggers::sizing::variadic_size test_size_20 = generate_size(20);
+   auto test_size_20 = get_tcf_sizing(20);
 
 
-   poggers::sizing::variadic_size test_24  = generate_size(24);
-   poggers::sizing::variadic_size test_26  = generate_size(26);
+   auto test_24  = get_tcf_sizing(24);
+   auto test_26  = get_tcf_sizing(26);
 
 
    //printf("22 size: %llu\n", test_size_24.total());
-   test_speed_batched<tcqf, uint64_t, uint16_t>("results/test_20", &test_size_20, 20);
-   test_speed_batched<tcqf, uint64_t, uint16_t>("results/test_24", &test_24, 20);
-   test_speed_batched<tcqf, uint64_t, uint16_t>("results/test_26", &test_26, 20);
+
+
+   test_speed_batched<tcqf, uint64_t, uint8_t>("results/test_20", &test_size_20, 20);
+   test_speed_batched<tcqf, uint64_t, uint8_t>("results/test_24", &test_24, 20);
+   test_speed_batched<tcqf, uint64_t, uint8_t>("results/test_26", &test_26, 20);
+
+
+
+
+
    // test_speed_batched<tcqf, uint64_t, uint16_t>("results/test_28", generate_size(28), 20);
    // test_speed_batched<tcqf, uint64_t, uint16_t>("results/test_30", generate_size(30), 20);
 
