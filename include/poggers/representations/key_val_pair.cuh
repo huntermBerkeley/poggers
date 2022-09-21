@@ -67,7 +67,7 @@ struct  key_val_pair {
 
 	public:
 
-		__host__ __device__ static inline const Key get_empty(){ return Key{0}; }
+		__host__ __device__ static inline const Key get_empty(){ return Key{0U}; }
 
 		Key key;
 
@@ -75,12 +75,28 @@ struct  key_val_pair {
 
 		__host__ __device__ key_val_pair(){}
 
+		
+
 		//constructor
 		__host__ __device__ key_val_pair (Key const & key, Val const & val)
 		: key(key), val(val){}
 
 		__device__ __inline__ bool atomic_swap(Key const ext_key, Val const ext_val){
 			if (poggers::helpers::typed_atomic_write(&key, get_empty(), ext_key)){
+
+				val = ext_val;
+
+				return true;
+
+			}
+
+			return false;
+
+		}
+
+		__device__ __inline__ bool atomic_swap_tombstone(Key const ext_key, Val const ext_val){
+
+			if (poggers::helpers::typed_atomic_write(&key, get_tombstone(), ext_key)){
 
 				val = ext_val;
 

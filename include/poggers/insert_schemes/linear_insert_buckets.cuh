@@ -152,6 +152,19 @@ public:
 
 	}
 
+	__device__ __inline__ bool insert_delete_into_bucket(cg::thread_block_tile<Partition_Size> insert_tile, Key key, Val val, uint64_t insert_slot){
+
+
+
+       		//insert_slot = insert_slot*Bucket_Size;// + insert_tile.thread_rank();
+
+       		//printf("checking_for_slot\n");
+
+
+ 			return slots[insert_slot].insert_delete(insert_tile, key, val);
+
+	}
+
 	__device__ __inline__ bool query_into_bucket(cg::thread_block_tile<Partition_Size> insert_tile, Key key, Val & ext_val, uint64_t insert_slot){
 
 
@@ -206,6 +219,29 @@ public:
 
 	}
 
+	__device__ __inline__ bool insert_with_delete(cg::thread_block_tile<Partition_Size> insert_tile, Key key, Val val){
+
+		//first step is to init probing scheme
+
+		//if(insert_tile.thread_rank() == 0) printf("Inside of power of n insert\n");
+
+
+
+		probing_scheme_type insert_probing_scheme(seed);
+
+		for (uint64_t insert_slot = insert_probing_scheme.begin(key); insert_slot != insert_probing_scheme.end(); insert_slot = insert_probing_scheme.next()){
+
+       		insert_slot = insert_slot % num_buckets;
+
+
+       		if (insert_delete_into_bucket(insert_tile, key, val , insert_slot)) return true;
+
+       	}  
+
+     	return false;
+
+	}
+
 
 
 	//TODO: replace this with generic upset operation.
@@ -225,6 +261,44 @@ public:
 			if (query_into_bucket(insert_tile, key, ext_val, insert_slot)){
 
 				found_val = true;
+				return true;
+			}
+
+			//I think this works?
+			//same as check_fill but we just ballot on trying to insert.
+			if (insert_into_bucket(insert_tile, key, val, insert_slot)){
+
+				found_val = false;
+				return true;
+
+			}
+		}
+
+		
+		return false;
+
+
+	}
+
+	__device__ __inline__ bool insert_if_not_exists_delete(cg::thread_block_tile<Partition_Size> insert_tile, Key key, Val val, Val & ext_val, bool &found_val){
+
+		//first step is to init probing scheme
+
+		//if(insert_tile.thread_rank() == 0) printf("Inside of power of n insert\n");
+
+
+		probing_scheme_type insert_probing_scheme(seed);
+
+		for (uint64_t insert_slot = insert_probing_scheme.begin(key); insert_slot != insert_probing_scheme.end(); insert_slot = insert_probing_scheme.next()){
+
+			insert_slot = insert_slot % num_buckets;
+
+			if (query_into_bucket(insert_tile, key, ext_val, insert_slot)){
+
+				found_val = true;
+
+				remove_from_bucket(insert_tile, key, insert_slot);
+
 				return true;
 			}
 

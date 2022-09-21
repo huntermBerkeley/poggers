@@ -40,6 +40,11 @@ struct  internal_dynamic_container {
 			if (smaller_version == get_empty()){
 				smaller_version += 1;
 			}
+
+			if (smaller_version == get_tombstone()){
+				smaller_version -= 1;
+			}
+
 			return smaller_version;
 
 		}
@@ -58,6 +63,12 @@ struct  internal_dynamic_container {
 		__device__ __inline__ bool atomic_swap(Key const ext_key, Val const ext_val){
 	
 			return storage.atomic_swap(get_smallKey(ext_key), ext_val);
+
+		}
+
+		__device__ __inline__ bool atomic_swap_tombstone(Key const ext_key, Val const ext_val){
+	
+			return storage.atomic_swap_tombstone(get_smallKey(ext_key), ext_val);
 
 		}
 

@@ -125,6 +125,12 @@ public:
 	__device__ bool insert_if_not_exists(Us... pargs){
 		return false;
 	}
+
+	template <class... Us>
+	__device__ bool insert_if_not_exists_delete(Us... pargs){
+		return false;
+	}
+
 	template <class... Us>
 	__device__ bool query(Us... pargs){
 		return false;
@@ -135,6 +141,11 @@ public:
 
 		return 0;
 
+	}
+
+	template <class... Us>
+	__device__ bool insert_with_delete(Us... pargs){
+		return false;
 	}
 
 

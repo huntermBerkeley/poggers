@@ -56,6 +56,22 @@ struct  shortened_bitmask_key_val_pair {
 
 		}
 
+		__device__ __inline__ bool atomic_swap_tombstone(Key const ext_key, Val const ext_val){
+			if (poggers::helpers::typed_atomic_write(&key, get_tombstone(), get_smallKey(ext_key))){
+
+				val = ext_val;
+
+				return true;
+
+			}
+
+			return false;
+
+		}
+
+
+
+
 		__host__ __device__ inline bool is_empty(){
 			return (key == get_empty());
 		}

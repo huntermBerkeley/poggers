@@ -146,6 +146,22 @@ struct  grouped_key_val_pair {
 
 		}
 
+		__device__ __inline__ bool atomic_swap_tombstone(Key const ext_key, Val const ext_val){
+
+			storage_type ext_storage = join_in_storage<Key, Val, storage_type>(ext_key, ext_val);
+
+			if (poggers::helpers::typed_atomic_write(&my_storage, join_in_storage<Key, Val, storage_type>(get_tombstone(), get_empty_val()), ext_storage)){
+
+				//val = ext_val;
+
+				return true;
+
+			}
+
+			return false;
+
+		}
+
 
 		__host__ __device__ inline bool is_empty(){
 

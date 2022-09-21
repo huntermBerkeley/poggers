@@ -140,6 +140,65 @@ struct  twelve_bucket {
 
 		}
 
+		__device__ inline bool insert_delete(cg::thread_block_tile<Partition_Size> insert_tile, Key key, Val val){
+
+
+
+			for (int i = insert_tile.thread_rank(); i < Bucket_Size; i+= Partition_Size){
+
+
+				bool ballot = false;
+
+				Storage_type * key_ptr = &keys[0];
+
+				if (poggers::helpers::sub_byte_empty(key_ptr, i) || poggers::helpers::sub_byte_match<Key>(key_ptr, get_tombstone(), key, i)){
+				//if (poggers::helpers::sub_byte_match<Key>(key_ptr, get_empty(), i)){
+					ballot = true;
+				}
+
+				auto ballot_result = insert_tile.ballot(ballot);
+
+				while (ballot_result){
+
+					ballot = false;
+
+					const auto leader = __ffs(ballot_result) -1;
+
+					if (leader == insert_tile.thread_rank()){
+
+						//printf("Inserting\n");
+
+						//poggers::helpers::sub_byte_contains<Storage_type, Key, 12, Bucket_Size>(&keys, i)
+						Storage_type * key_ptr = &keys[0];
+
+
+						if (poggers::helpers::sub_byte_empty(key_ptr, i)){
+							ballot = poggers::helpers::sub_byte_replace<Key>(key_ptr, get_empty(), key, i);
+						} else {
+							ballot = poggers::helpers::sub_byte_replace<Key>(key_ptr, get_tombstone(), key, i);
+						}
+						
+						//ballot = poggers::helpers::typed_atomic_write(&keys[i], get_empty(), key);
+
+						// if (ballot){
+						// 	vals[i] = val;
+						// }
+					}
+
+					if (insert_tile.ballot(ballot)) return true;
+
+					ballot_result ^= 1UL << leader;
+
+				}
+
+
+			}
+
+			return false;
+
+
+		}
+
 
 		__device__ __inline__ bool remove(cg::thread_block_tile<Partition_Size> insert_tile, Key ext_key){
 

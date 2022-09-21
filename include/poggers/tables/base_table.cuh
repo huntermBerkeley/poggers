@@ -186,6 +186,36 @@ public:
 
 	}
 
+	__device__ bool insert_with_delete(cg::thread_block_tile<Partition_Size> Insert_tile, Key key, Val val){
+
+
+		// if (Insert_tile.thread_rank() == 0){ printf("Starting Test\n" );}
+
+		if (my_insert_scheme->insert_with_delete(Insert_tile, key, val)){
+			return true;
+		} else {
+
+			if (Is_Recursive){
+				return secondary_table->insert_with_delete(Insert_tile, key, val);
+			}
+
+			
+			return false;
+
+		}
+
+		
+
+	}
+
+	//inserting from empty does nothing
+	__device__ bool insert_with_delete(cg::thread_block_tile<Partition_Size> Insert_tile, Key key){
+
+		Val alt_val = 0;
+		return insert_with_delete(Insert_tile, key, alt_val);
+
+	}
+
 
 	__device__ bool insert_if_not_exists(cg::thread_block_tile<Partition_Size> Insert_tile, Key key, Val val, Val & ext_val, bool & found){
 
@@ -198,6 +228,28 @@ public:
 
 			if (Is_Recursive){
 				return secondary_table->insert_if_not_exists(Insert_tile, key, val, ext_val, found);
+			}
+
+			
+			return false;
+
+		}
+
+		
+
+	}
+
+	__device__ bool insert_if_not_exists_delete(cg::thread_block_tile<Partition_Size> Insert_tile, Key key, Val val, Val & ext_val, bool & found){
+
+
+		// if (Insert_tile.thread_rank() == 0){ printf("Starting Test\n" );}
+
+		if (my_insert_scheme->insert_if_not_exists_delete(Insert_tile, key, val, ext_val, found)){
+			return true;
+		} else {
+
+			if (Is_Recursive){
+				return secondary_table->insert_if_not_exists_delete(Insert_tile, key, val, ext_val, found);
 			}
 
 			
