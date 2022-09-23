@@ -113,7 +113,12 @@ public:
 
 		uint64_t nslots = sizing->next();
 
+
+		#if DEBUG_PRINTS
+
 		printf("Level has %llu slots\n", nslots);
+
+		#endif
 
 		if (nslots == sizing->end()){
 			throw std::runtime_error("Hash Table expects a num_slots from the sizing, but the size container is empty\n");
