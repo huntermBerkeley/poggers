@@ -40,7 +40,7 @@ template<typename Key, typename Val, typename Storage, size_t key_bits, size_t v
 __host__ __device__ Key retrieve_key_from_storage(Storage my_storage){
 
 	//split 
-	return (my_storage & (((Storage{1}) << sizeof(Key)*8) -1));
+	return (my_storage & (((Storage{1}) << key_bits) -1));
 
 	// Storage mask = ((((Storage) 0) << (sizeof(Val)*8)) -1) << sizeof(Key);
 
@@ -171,6 +171,8 @@ struct  grouped_bits_pair {
 		__host__ __device__ inline bool contains(Key ext_key){
 
 			Key key = retrieve_key_from_storage<Key, Val, storage_type, key_bits, val_bits>(my_storage);
+
+			ext_key = ext_key & ((1ULL << key_bits)-1);
 
 			return (key == ext_key);
 		}

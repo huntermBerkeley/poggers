@@ -98,8 +98,8 @@
 using grouped_items = typename poggers::representations::internal_key_val_storage<8,8>::type;
 
 //32 bit grouped
-using backing_table = poggers::tables::bucketed_table<uint64_t, uint16_t, poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<poggers::representations::bit_grouped_container<8,8>::representation, uint16_t>::representation>::representation, 1, 8, poggers::insert_schemes::linear_insert_bucket_scheme, 20, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-using tcqf = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<poggers::representations::bit_grouped_container<8,8>::representation, uint16_t>::representation>::representation, 1, 8, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher, true, backing_table>;
+using backing_table = poggers::tables::bucketed_table<uint64_t, uint8_t, poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<poggers::representations::bit_grouped_container<10,6>::representation, uint16_t>::representation>::representation, 1, 8, poggers::insert_schemes::linear_insert_bucket_scheme, 20, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+using tcqf = poggers::tables::bucketed_table<uint64_t,uint8_t, poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<poggers::representations::bit_grouped_container<10,6>::representation, uint16_t>::representation>::representation, 1, 8, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher, true, backing_table>;
 
 //regular backend
 // using backing_table = poggers::tables::bucketed_table<uint64_t, uint16_t, poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<poggers::representations::key_val_pair, uint16_t>::representation>::representation, 1, 8, poggers::insert_schemes::linear_insert_bucket_scheme, 20, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
@@ -737,9 +737,9 @@ int main(int argc, char** argv) {
    // //printf("22 size: %llu\n", test_size_24.total());
 
 
-   test_speed_batched<tcqf, uint64_t, uint16_t>("results/test_20", &test_size_20, 20);
-   test_speed_batched<tcqf, uint64_t, uint16_t>("results/test_24", &test_24, 20);
-   test_speed_batched<tcqf, uint64_t, uint16_t>("results/test_26", &test_26, 20);
+   test_speed_batched<tcqf, uint64_t, uint8_t>("results/test_20", &test_size_20, 20);
+   test_speed_batched<tcqf, uint64_t, uint8_t>("results/test_24", &test_24, 20);
+   test_speed_batched<tcqf, uint64_t, uint8_t>("results/test_26", &test_26, 20);
 
 
 
