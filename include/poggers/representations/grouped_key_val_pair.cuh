@@ -23,27 +23,27 @@ namespace representations {
 
 //Template metaprogramming to determine minimum container
 
-template<typename T>
-struct return_
-{
-    typedef T type;
-};
+// template<typename T>
+// struct return_
+// {
+//     typedef T type;
+// };
 
-//given bytes used generate the main
-template<uint64_t N>
-struct bytetype : return_<uint64_t> {};
+// //given bytes used generate the main
+// template<uint64_t N>
+// struct bytetype : return_<uint64_t> {};
 
-template<>
-struct bytetype<4> : return_<uint32_t> {};
+// template<>
+// struct bytetype<4> : return_<uint32_t> {};
 
-template<>
-struct bytetype<3> : return_<uint32_t> {};
+// template<>
+// struct bytetype<3> : return_<uint32_t> {};
 
-template<>
-struct bytetype<2> : return_<uint16_t> {};
+// template<>
+// struct bytetype<2> : return_<uint16_t> {};
 
-template<>
-struct bytetype<1> : return_<uint8_t> {};
+// template<>
+// struct bytetype<1> : return_<uint8_t> {};
 
 
 //recursive structure for p02 padding
@@ -53,14 +53,14 @@ struct bytetype<1> : return_<uint8_t> {};
 //Storage keeps items (Val, Key) in memory
 //Key retreived via OR with lower bits
 template<typename Key, typename Val>
-struct internal_key_val_storage : bytetype<sizeof(Key)+sizeof(Val)>{};
+struct bit_internal_key_val_storage : poggers::helpers::bytetype<sizeof(Key)+sizeof(Val)>{};
 
 
 template<typename Key, typename Val, typename Storage>
 __host__ __device__ Key retrieve_key_from_storage(Storage my_storage){
 
 	//split 
-	return (my_storage & (((Storage{0}) << sizeof(Key)*8) -1));
+	return (my_storage & (((Storage{1}) << sizeof(Key)*8) -1));
 
 	// Storage mask = ((((Storage) 0) << (sizeof(Val)*8)) -1) << sizeof(Key);
 
@@ -74,7 +74,7 @@ __host__ __device__ Val retrieve_val_from_storage(Storage my_storage){
 	//split 
 	//my_key = my_storage & ((((Storage) 0) << sizeof(Key)*8) -1);
 
-	Storage lower_bits = (((Storage{0}) << (sizeof(Val)*8)) -1);
+	Storage lower_bits = (((Storage{1}) << (sizeof(Val)*8)) -1);
 
 	Storage mask = lower_bits << sizeof(Key)*8;
 
@@ -115,7 +115,7 @@ struct  grouped_key_val_pair {
 
 	public:
 
-		using storage_type = typename internal_key_val_storage<Key,Val>::type;
+		using storage_type = typename bit_internal_key_val_storage<Key,Val>::type;
 
 		storage_type my_storage;
 

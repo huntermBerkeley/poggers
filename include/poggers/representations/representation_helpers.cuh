@@ -19,6 +19,29 @@ namespace poggers {
 namespace helpers {
 
 
+template<typename T>
+struct return_
+{
+    typedef T type;
+};
+
+//given bytes used generate the main
+template<uint64_t N>
+struct bytetype : return_<uint64_t> {};
+
+template<>
+struct bytetype<4> : return_<uint32_t> {};
+
+template<>
+struct bytetype<3> : return_<uint32_t> {};
+
+template<>
+struct bytetype<2> : return_<uint16_t> {};
+
+template<>
+struct bytetype<1> : return_<uint8_t> {};
+
+
 template <typename T>
 __device__ __inline__ bool get_evenness_fast(T item){
 	return item & 1;

@@ -13,6 +13,7 @@
  * ============================================================================
  */
 
+#define DEBUG_PRINTS 1
 
 
 
@@ -46,6 +47,8 @@
 #include <poggers/tables/bucketed_table.cuh>
 
 #include <poggers/representations/grouped_key_val_pair.cuh>
+
+#include <poggers/representations/grouped_storage_sub_bits.cuh>
 
 #include <stdio.h>
 #include <iostream>
@@ -92,12 +95,11 @@
 // };
 
 
-using grouped_items = typename poggers::representations::internal_key_val_storage<uint16_t, uint16_t>::type;
-
+using grouped_items = typename poggers::representations::internal_key_val_storage<8,8>::type;
 
 //32 bit grouped
-using backing_table = poggers::tables::bucketed_table<uint64_t, uint16_t, poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<poggers::representations::grouped_key_val_pair, uint16_t>::representation>::representation, 1, 8, poggers::insert_schemes::linear_insert_bucket_scheme, 20, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-using tcqf = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<poggers::representations::grouped_key_val_pair, uint16_t>::representation>::representation, 1, 8, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher, true, backing_table>;
+using backing_table = poggers::tables::bucketed_table<uint64_t, uint16_t, poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<poggers::representations::bit_grouped_container<8,8>::representation, uint16_t>::representation>::representation, 1, 8, poggers::insert_schemes::linear_insert_bucket_scheme, 20, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+using tcqf = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<poggers::representations::bit_grouped_container<8,8>::representation, uint16_t>::representation>::representation, 1, 8, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher, true, backing_table>;
 
 //regular backend
 // using backing_table = poggers::tables::bucketed_table<uint64_t, uint16_t, poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<poggers::representations::key_val_pair, uint16_t>::representation>::representation, 1, 8, poggers::insert_schemes::linear_insert_bucket_scheme, 20, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
@@ -171,13 +173,21 @@ __global__ void speed_insert_kernel(Filter * filter, Key * keys, Val * vals, uin
    // } 
 
 
-   if (!filter->insert_if_not_exists_delete(tile, keys[tid], vals[tid], ext_val, found)){
+
+
+   if (!filter->insert(tile, keys[tid], vals[tid])){
 
      //filter->insert_if_not_exists(tile, keys[tid], vals[tid], ext_val, found);
 
       if (tile.thread_rank() == 0){
          atomicAdd((unsigned long long int *) misses, 1ULL);
       }
+
+
+
+   } else {
+
+      filter->query(tile, keys[tid], ext_val);
 
 
 
@@ -329,9 +339,11 @@ template <typename Filter, typename Key, typename Val, typename Sizing_Type>
 __host__ void test_speed_batched(const std::string& filename, Sizing_Type * Initializer, int num_batches){
 
 
-   std::cout << "Starting " << filename << std::endl;
-
    uint64_t nitems = Initializer->total()*.9;
+
+   std::cout << "Starting " << filename << " with " << nitems << " items." << std::endl;
+
+   
 
    Key * host_keys = generate_data<Key>(nitems);
    Val * host_vals = generate_data<Val>(nitems);
@@ -599,30 +611,75 @@ __host__ poggers::sizing::size_in_num_slots<2> get_tcf_sizing(uint64_t num_bits)
 
 }
 
+
+__host__ __device__ uint8_t pack_extensions_small(char left, char right){
+
+   char kmer_ext[6] = {'F', 'A', 'C', 'T', 'G', '0'};
+
+  uint8_t ret_val = 0;
+
+  for (uint i = 0; i < 6; i++){
+
+    if (left == kmer_ext[i]){
+      ret_val += i << 4;
+    }
+
+    if (right == kmer_ext[i]){
+      ret_val += i;
+    }
+
+  }
+
+  return ret_val;
+
+
+}
+
+__host__ __device__ bool unpack_extensions_small(uint8_t storage, char & left, char & right){
+
+   char kmer_ext[6] = {'F', 'A', 'C', 'T', 'G', '0'};
+
+  uint8_t left_val = ((storage & 0xf0) >> 4);
+
+  uint8_t right_val = (storage & 0x0f);
+
+  if ((left_val < 6) && (right_val < 6)){
+
+    left = kmer_ext[left_val];
+    right = kmer_ext[right_val];
+
+    return true;
+  } else {
+
+    return false;
+  }
+
+}
+
 int main(int argc, char** argv) {
 
-   // printf("Grouped item size: %d\n", sizeof(grouped_items));
+   printf("Grouped item size: %d\n", sizeof(grouped_items));
 
-   // grouped_items test;
+   grouped_items test;
 
-   // for (uint16_t i = 0; i < 1000; i++){
+   for (uint16_t i = 0; i < 256; i++){
 
-   //    for (uint16_t j=0; j < 1000; j++){
+      for (uint16_t j=0; j < 256; j++){
 
-   //       test = poggers::representations::join_in_storage<uint16_t, uint16_t, grouped_items>(i,j);
+         test = poggers::representations::join_in_storage<uint8_t, uint8_t, grouped_items, 8, 8>(i,j);
 
-   //       uint16_t stored_key = poggers::representations::retrieve_key_from_storage<uint16_t, uint16_t, grouped_items>(test);
-
-
-   //       uint16_t stored_val = poggers::representations::retrieve_val_from_storage<uint16_t, uint16_t, grouped_items>(test);
-
-   //       if (stored_key != i || stored_val != j){
-   //          printf("Displaying %lx, %u - %u, %u - %u\n", test, i, stored_key, j, stored_val);
-   //       }
+         uint16_t stored_key = poggers::representations::retrieve_key_from_storage<uint8_t, uint8_t, grouped_items, 8, 8>(test);
 
 
-   //    }
-   // }
+         uint16_t stored_val = poggers::representations::retrieve_val_from_storage<uint8_t, uint8_t, grouped_items, 8, 8>(test);
+
+         if (stored_key != i || stored_val != j){
+            printf("Displaying %lx, %u - %u, %u - %u\n", test, i, stored_key, j, stored_val);
+         }
+
+
+      }
+   }
 
    // poggers::sizing::size_in_num_slots<1> first_size_20(1ULL << 20);
    // printf("2^20\n");
@@ -644,6 +701,32 @@ int main(int argc, char** argv) {
    // printf("2^28\n");
    // test_speed<table_type, uint64_t, uint64_t>(&first_size_28);
 
+   // char kmer_ext[6] = {'F', 'A', 'C', 'T', 'G', '0'};
+
+   // for (int i=0; i < 6; i++){
+
+   //    for (int j =0; j < 6; j++){
+
+
+   //       char my_left = kmer_ext[i];
+   //       char my_right = kmer_ext[j];
+
+   //       uint8_t compressed = pack_extensions_small(my_left, my_right);
+
+
+   //       char new_left;
+   //       char new_right;
+
+   //       unpack_extensions_small(compressed, new_left, new_right);
+
+   //       if (new_left != my_left || new_right != my_right){
+   //          printf("Bugggg\n");
+   //       }
+
+   //    }
+
+   // }
+
    auto test_size_20 = get_tcf_sizing(20);
 
 
@@ -651,7 +734,7 @@ int main(int argc, char** argv) {
    auto test_26  = get_tcf_sizing(26);
 
 
-   //printf("22 size: %llu\n", test_size_24.total());
+   // //printf("22 size: %llu\n", test_size_24.total());
 
 
    test_speed_batched<tcqf, uint64_t, uint16_t>("results/test_20", &test_size_20, 20);
