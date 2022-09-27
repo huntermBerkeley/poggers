@@ -23,7 +23,7 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/EvalGpuArchs.cmake)
   evaluate_gpu_archs(GPU_ARCHS)
 
 
-find_package(CUDAToolkit 11.4 REQUIRED)
+find_package(CUDAToolkit 11.0 REQUIRED)
 set(CMAKE_CUDA_RUNTIME_LIBRARY SHARED)
 
 #package manager
