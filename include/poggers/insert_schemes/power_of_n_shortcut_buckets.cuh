@@ -761,6 +761,24 @@ public:
 
 	}
 
+	__host__ uint64_t host_get_num_buckets(){
+
+		my_type * host_version;
+
+		cudaMallocHost((void **)&host_version, sizeof(my_type));
+
+		cudaMemcpy(host_version, this, sizeof(my_type), cudaMemcpyDeviceToHost);
+
+		uint64_t ret_val = host_version->num_buckets;
+
+		cudaFreeHost(host_version);
+
+		return ret_val;
+
+
+
+	}
+
 
 };
 

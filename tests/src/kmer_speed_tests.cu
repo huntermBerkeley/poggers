@@ -315,6 +315,7 @@ __host__ void test_speed(Sizing_Type * Initializer){
    printf("%llu / %llu / %llu\n", misses[0], misses[1], misses[2]);
    printf("Overwrite was %llu\n", overwrite[0]);
 
+   printf("End fill was: %llu/%llu\n", test_filter->get_fill(), test_filter->get_num_slots());
 
    cudaDeviceSynchronize();
 
@@ -472,6 +473,8 @@ __host__ void test_speed_batched(const std::string& filename, Sizing_Type * Init
 
    cudaDeviceSynchronize();
 
+
+   printf("End fill was: %llu/%llu\n", test_filter->get_fill(), test_filter->get_num_slots());
 
    Filter::free_on_device(test_filter);
 

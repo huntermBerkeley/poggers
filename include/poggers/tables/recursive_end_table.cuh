@@ -148,6 +148,18 @@ public:
 		return false;
 	}
 
+	template <class... Us>
+	__host__ uint64_t get_fill(Us... pargs){
+
+		return 0;
+	}
+
+	template <class... Us>
+	__host__ uint64_t get_num_slots(Us... pargs){
+
+		return 0;
+	}
+
 
 
 
