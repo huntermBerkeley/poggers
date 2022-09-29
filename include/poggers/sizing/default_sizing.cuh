@@ -38,7 +38,7 @@ private:
 
 	uint64_t slots [Num_Tables];
 
-	int i;
+	uint64_t i;
 
 
 public:
@@ -56,8 +56,8 @@ public:
 		i = 0;
 		std::va_list args;
 		va_start(args, start);
-		for (int i=1; i < Num_Tables; i++){
-			slots[i] = va_arg(args, uint64_t);
+		for (uint64_t j=1; j < Num_Tables; j++){
+			slots[j] = va_arg(args, uint64_t);
 		}
 		va_end(args);
 
@@ -83,8 +83,8 @@ public:
 	__host__ uint64_t total(){
 		uint64_t total = 0;
 
-		for (int i=0; i < Num_Tables; i++){
-			total+=slots[i];
+		for (uint64_t j=0; j < Num_Tables; j++){
+			total+=slots[j];
 		}
 		return total;
 	}
