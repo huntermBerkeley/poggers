@@ -187,7 +187,7 @@ struct bitarr_grouped {
 					my_lead_bits ^= 1ULL << leader;
 			}
 
-			printf("Stalling in malloc?\n");
+			//printf("Stalling in malloc?\n");
 
 
 
@@ -353,6 +353,8 @@ struct storage_bitmap {
 
     int maximum_sm = prop.multiProcessorCount;
 
+    printf("Booting with %d SMs.\n", maximum_sm);
+
     my_type * bitmaps;
 
     cudaMalloc((void **)&bitmaps, sizeof(my_type)*maximum_sm);
@@ -367,6 +369,8 @@ struct storage_bitmap {
 
 	cudaDeviceProp prop;
     cudaGetDeviceProperties(&prop, 0);
+
+    prop.multiProcessorCount;
 
     int maximum_sm = num_blocks;
 
@@ -399,7 +403,14 @@ struct storage_bitmap {
 
 		//printf("my_lead_bits %llx\n", my_lead_bits);
 
+
+		//there is a stall in this loop.
+
 		while (my_lead_bits){
+
+
+			//SETUP - this isn't working because the other system does not properly drain the main ihput. 
+			//printf("Stalling %d\n", __popcll(my_lead_bits));
 
 			
 
@@ -477,7 +488,6 @@ struct storage_bitmap {
 
 		while (my_lead_bits){
 
-
 			
 
 			const auto leader = __ffsll(my_lead_bits)-1;
@@ -494,11 +504,16 @@ struct storage_bitmap {
 
 				uint64_t mask = (~0ULL << (start + active_threads.size()));
 
+				
+
 				if (active_threads.thread_rank() == 0){
 					old_result = atomicAnd((unsigned long long int *)&bits[leader], mask);
 				}
 
 				old_result = active_threads.shfl(old_result, 0);
+
+
+				printf("Mask %llx | current value: %llx\n", mask, old_result);
 
 				if (old_result | (1ULL << (start + active_threads.thread_rank()))){
 

@@ -339,6 +339,75 @@ __global__ void malloc_init_kernel(bitarr_grouped<4> * global_bitarray, uint64_t
 }
 
 
+__global__ void test_bittarr_single_kernel(bitarr_grouped<4> * global_bitarray, storage_bitmap<4> * local_bitmaps, uint64_t mallocs_per_thread, uint64_t secondary_mallocs){
+
+
+   uint64_t tid = threadIdx.x + blockIdx.x*blockDim.x;
+
+   if (tid >= 1) return;
+
+
+   int my_core = 0;
+
+   //printf("%d\n", my_core);
+
+   //storage_bitmap<4> * my_bitmap = storage_bitmap<4>::get_my_bitmap(local_bitmaps);
+
+
+   uint64_t blockID = blockIdx.x;
+
+   storage_bitmap<4> * my_bitmap = &local_bitmaps[0];
+   // if (threadIdx.x == 0){
+   //    printf("%llu\n", blockID);
+   // }
+
+
+   bool should_preempt = false;
+   uint64_t * ext_address = nullptr;
+   void * my_allocation = nullptr;
+   uint64_t remaining_metadata = 0;
+
+
+   for (int i =0; i < mallocs_per_thread; i++){
+
+
+      cg::coalesced_group grouped_threads = global_bitarray[blockID].metadata_malloc(my_allocation, should_preempt, ext_address, remaining_metadata);
+
+
+      // __syncthreads();
+
+      // assert(my_bitmap->check_attachment() == 0ULL);
+
+      // __syncthreads();
+
+
+
+
+      if (grouped_threads.thread_rank() == 0 && remaining_metadata != 0ULL){
+
+            //printf("Size: %d, popcount: %d\n", grouped_threads.size(), __popcll(remaining_metadata));
+
+            my_bitmap->attach_buffer(ext_address, remaining_metadata);
+
+         }
+
+
+   }
+
+
+   for (int i=0; i < secondary_mallocs; i++){
+
+
+      void * my_allocation = my_bitmap->malloc_from_existing();
+
+
+
+   }
+
+}
+
+
+
 __host__ void build_bitarr_test_prefetch(uint64_t max_mallocs, uint64_t mallocs_per_thread, uint64_t block_size){
 
 
@@ -514,7 +583,98 @@ __host__ void build_bitarr_test(uint64_t max_mallocs, uint64_t mallocs_per_threa
 
 }
 
+
+__host__ void build_bitarr_test_single_threaded(uint64_t mallocs_per_thread, uint64_t secondary_mallocs){
+
+   printf("Launching new tests\n");
+
+
+   //uint64_t max_blocks = (max_mallocs-1)/block_size+1;
+
+
+   storage_bitmap<4> * local_bitmaps = storage_bitmap<4>::generate_buffers();
+
+   printf("Done with init\n");
+
+   auto bitarr_start = std::chrono::high_resolution_clock::now();
+
+
+
+   //malloc_test_kernel_split_local<<<(max_mallocs -1)/block_size+1, block_size>>>(dev_bitarray, local_bitmaps, max_mallocs, mallocs_per_thread);
+
+   cudaDeviceSynchronize();
+
+   auto bitarr_end = std::chrono::high_resolution_clock::now();
+
+   printf("Done with speed test\n");
+
+   std::chrono::duration<double> bit_diff = bitarr_end - bitarr_start;
+
+   //std::cout << "bitarr Malloced " << max_mallocs*mallocs_per_thread << " in " << bit_diff.count() << " seconds, " << block_size << "max block size\n";
+
+   //printf("%f allocs per second\n", ((double) max_mallocs*mallocs_per_thread)/ bit_diff.count());
+
+
+   cudaDeviceSynchronize();
+
+
+
+   cudaDeviceSynchronize();
+
+   uint64_t * max_counters;
+
+   cudaMalloc((void ** )&max_counters, sizeof(uint64_t)*1*4096);
+
+   assert(max_counters != nullptr);
+   
+
+   cudaMemset(max_counters, 0, sizeof(uint64_t)*1*4096);
+
+   bitarr_grouped<4> * dev_bitarray;
+
+   //cudaMalloc((void **)& dev_bitarray, sizeof(bitarr_grouped<4>)*max_blocks);
+
+
+   cudaDeviceSynchronize();
+
+   //and boot correctness test
+   cudaMalloc((void **)& dev_bitarray, sizeof(bitarr_grouped<4>)*1);
+
+   assert(dev_bitarray != nullptr);
+
+   cudaDeviceSynchronize();
+
+   malloc_init_kernel<<<1,1>>>(dev_bitarray, 1);
+
+
+
+
+
+
+   cudaDeviceSynchronize();
+
+   //malloc_test_correctness_kernel<<<(max_mallocs -1)/block_size+1, block_size>>>(dev_bitarray, max_counters, max_mallocs, mallocs_per_thread);
+
+   test_bittarr_single_kernel<<<1,32>>>(dev_bitarray, local_bitmaps, mallocs_per_thread, secondary_mallocs);
+
+
+
+   cudaDeviceSynchronize();
+
+   cudaFree(max_counters);
+
+   cudaFree(dev_bitarray);
+
+
+
+
+
+}
+
+
 __host__ void build_bitarr_test_split(uint64_t max_mallocs, uint64_t mallocs_per_thread, uint64_t block_size){
+
+   printf("Launching new tests\n");
 
 
    uint64_t max_blocks = (max_mallocs-1)/block_size+1;
@@ -533,7 +693,7 @@ __host__ void build_bitarr_test_split(uint64_t max_mallocs, uint64_t mallocs_per
    cudaDeviceSynchronize();
 
 
-   storage_bitmap<4> * local_bitmaps = storage_bitmap<4>::generate_buffers_blocks(max_blocks);
+   storage_bitmap<4> * local_bitmaps = storage_bitmap<4>::generate_buffers();
 
    printf("Done with init\n");
 
@@ -625,11 +785,11 @@ int main(int argc, char** argv) {
    build_bitarr_test_split(8192*4, 1, 512);
 
    //1 mil
-   build_bitarr_test_split(1000000, 1, 512);
+   // build_bitarr_test_split(1000000, 1, 512);
 
-   build_bitarr_test_split(2000000, 1, 512);
+   // build_bitarr_test_split(2000000, 1, 512);
 
-   build_bitarr_test_split(4000000, 1, 512);
+   // build_bitarr_test_split(4000000, 1, 512);
 
 
 
@@ -637,9 +797,9 @@ int main(int argc, char** argv) {
    //build_bitarr_test_split(10000000, 1, 512);
 
    // //100 mil
-   build_bitarr_test_split(100000000, 1, 512);
+   //build_bitarr_test_split(100000000, 1, 512);
 
-   build_bitarr_test_split(100000000, 2, 512);
+   build_bitarr_test_split(1000, 2, 512);
 
    //    //1 mil
    // build_bitarr_test_prefetch(1000000, 1, 1024);
@@ -648,7 +808,7 @@ int main(int argc, char** argv) {
    // build_bitarr_test_prefetch(10000000, 1, 1024);
 
    // //100 mil
-   // build_bitarr_test_prefetch(100000000, 1, 1024);
+   build_bitarr_test_prefetch(10000000, 1, 512);
 
 
 	return 0;

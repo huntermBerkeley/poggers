@@ -136,6 +136,11 @@ public:
 		return false;
 	}
 
+	template <class... Us>
+	__device__ bool remove(Us... pargs){
+		return false;
+	}
+
 	__host__ uint64_t host_bytes_in_use(){
 
 
