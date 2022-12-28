@@ -42,7 +42,12 @@ __global__ void assert_unique(char ** unique_ids, uint64_t num_allocs){
    char * my_allocation = unique_ids[tid];
 
 
-   if (my_allocation == nullptr)return;
+   if (my_allocation == nullptr){
+
+
+      printf("FAIL to malloc\n");
+      asm("trap;");
+   }
 
    for (uint64_t i =0; i < num_allocs; i++){
 
@@ -90,6 +95,8 @@ __global__ void buddy_alloc_malloc_test_1(bitbuddy_allocator * alloc, uint64_t n
          unique_ids[i] = (char *) my_alloc;
 
       }
+
+      printf("Done with %i/%llu\n", i, num_threads);
 
    }
 
@@ -195,7 +202,21 @@ __global__ void malloc_test_cyclic(bitbuddy_allocator * alloc, uint64_t num_thre
 
 
 
+     if (my_alloc == nullptr) {
+
+
+         void * second_alloc = alloc->malloc(1);
+
+     //     alloc->free(second_alloc);
+
+     }
+
+
+
       if (my_alloc == nullptr){
+
+
+
       
          atomicAdd((unsigned long long int *) misses, 1ULL);
          //asm("trap;");
@@ -206,7 +227,7 @@ __global__ void malloc_test_cyclic(bitbuddy_allocator * alloc, uint64_t num_thre
       }
 
 
-      printf("Progressing, %llu\n", tid);
+      //printf("Progressing, %llu\n", tid);
 
 
 
@@ -522,7 +543,7 @@ __host__ bool test_multi_threaded_boundary_singleton(){
 
    cudaDeviceSynchronize();
 
-   assert_unique<<<1,2>>>(grabbed_allocs,2);
+   assert_unique<<<1,2>>>(grabbed_allocs,1);
 
    cudaDeviceSynchronize();
 
@@ -777,56 +798,137 @@ __host__ bool test_num_allocs(uint64_t num_allocs){
 
 
 
+__host__ bool test_num_allocs_repeat(uint64_t num_allocs, uint64_t num_loops){
+
+
+
+   char ** grabbed_allocs;
+
+   cudaMalloc((void **)&grabbed_allocs, sizeof(char *)*num_allocs);
+
+   char * ext_memory;
+
+   cudaMalloc((void **)&ext_memory, num_allocs);
+   
+   bitbuddy_allocator * alloc = bitbuddy_allocator::generate_on_device(ext_memory, num_allocs, 1);
+
+   cudaDeviceSynchronize();
+
+
+   for (uint64_t i = 0; i <  num_loops; i++){
+
+
+      cudaMemset(grabbed_allocs, 0ULL, sizeof(char *)*num_allocs);
+
+
+      buddy_alloc_malloc_test_2<<<(num_allocs-1)/512+1,512>>>(alloc, num_allocs, grabbed_allocs);
+
+      cudaDeviceSynchronize();
+
+      fflush(stdout);
+      //printf("Done with mallocs\n");
+
+      cudaDeviceSynchronize();
+
+      assert_unique<<<(num_allocs-1)/512+1,512>>>(grabbed_allocs, num_allocs);
+
+      cudaDeviceSynchronize();
+
+
+      //fflush(stdout);
+      //printf("Done with check\n");
+
+      cudaDeviceSynchronize();
+
+      //buddy_alloc_free_test_1<<<1,1>>>(alloc, 31, grabbed_allocs);
+
+      buddy_alloc_free_test_2<<<(num_allocs-1)/512+1,512>>>(alloc, num_allocs, grabbed_allocs);
+
+      cudaDeviceSynchronize();
+
+
+
+
+
+
+
+
+
+   }
+
+   bitbuddy_allocator::free_on_device(alloc);
+
+   cudaDeviceSynchronize();
+
+
+   
+   cudaFree(ext_memory);
+
+   cudaFree(grabbed_allocs);
+
+
+   printf("Done with repetition test: %llu %llu\n", num_allocs, num_loops);
+
+
+   return true;
+
+
+
+}
+
+
+
+
 //using allocator_type = buddy_allocator<0,0>;
 
 int main(int argc, char** argv) {
 
 
-   if (!test_one_thread()){
-      printf("Test one thread: [FAIL]\n");
-   } else {
-      printf("Test one thread: [PASS]\n");
-   }
+   // if (!test_one_thread()){
+   //    printf("Test one thread: [FAIL]\n");
+   // } else {
+   //    printf("Test one thread: [PASS]\n");
+   // }
 
-   if (!test_one_thread_two()){
-      printf("Test one thread two items: [FAIL]\n");
-   } else {
-      printf("Test one thread two items: [PASS]\n");
-   }
-
-
-   if (!test_1()){
-      printf("Test one thread 31 items: [FAIL]\n");
-   } else {
-      printf("Test one thread 31 items: [PASS]\n");
-   }
-
-   if (!test_2()){
-      printf("Test 2: [FAIL]\n");
-   } else {
-      printf("Test 2: [PASS]\n");
-   }   
+   // if (!test_one_thread_two()){
+   //    printf("Test one thread two items: [FAIL]\n");
+   // } else {
+   //    printf("Test one thread two items: [PASS]\n");
+   // }
 
 
-   if (!test_num_allocs(32)){
-      printf("Test 3: [FAIL]\n");
-   } else {
-      printf("Test 3: [PASS]\n");
-   }   
+   // if (!test_1()){
+   //    printf("Test one thread 31 items: [FAIL]\n");
+   // } else {
+   //    printf("Test one thread 31 items: [PASS]\n");
+   // }
+
+   // if (!test_2()){
+   //    printf("Test 2: [FAIL]\n");
+   // } else {
+   //    printf("Test 2: [PASS]\n");
+   // }   
 
 
-   if (!test_num_allocs_one_thread(33)){
-      printf("Test 33 One Thread: [FAIL]\n");
-   } else {
-      printf("Test 33 One Thread: [PASS]\n");
-   }  
+   // if (!test_num_allocs(32)){
+   //    printf("Test 3: [FAIL]\n");
+   // } else {
+   //    printf("Test 3: [PASS]\n");
+   // }   
 
 
-   if (!test_num_allocs_one_thread(1025)){
-      printf("Tier 3 One Thread: [FAIL]\n");
-   } else {
-      printf("Tier 3 One Thread: [PASS]\n");
-   }  
+   // if (!test_num_allocs_one_thread(33)){
+   //    printf("Test 33 One Thread: [FAIL]\n");
+   // } else {
+   //    printf("Test 33 One Thread: [PASS]\n");
+   // }  
+
+
+   // if (!test_num_allocs_one_thread(1025)){
+   //    printf("Tier 3 One Thread: [FAIL]\n");
+   // } else {
+   //    printf("Tier 3 One Thread: [PASS]\n");
+   // }  
 
 
    if (!test_num_allocs_one_thread(4097)){
@@ -899,11 +1001,32 @@ int main(int argc, char** argv) {
    }
 
 
-
-   printf("Cycle tests\n");
-   for (int i=5; i < 16; i++){
-      test_cycles((1ULL << i), 100);
+   //these do fine.
+   printf("repetition tests\n");
+   for (int i=5; i < 10; i++){
+      test_num_allocs_repeat((1ULL << i), 1000);
    }
+
+
+
+   printf("Cycle tests 1\n");
+   for (int i=5; i < 16; i++){
+      test_cycles((1ULL << i), 1);
+   }
+
+
+   printf("Cycle tests 2\n");
+   for (int i=5; i < 16; i++){
+      test_cycles((1ULL << i), 2);
+   }
+
+
+
+   printf("Cycle tests 50\n");
+   for (int i=5; i < 16; i++){
+      test_cycles((1ULL << i), 50);
+   }
+
 
 
    return 0;

@@ -24,7 +24,7 @@
 namespace cg = cooperative_groups;
 
 
-#define LEVEL_CUTOF 2
+#define LEVEL_CUTOF 0
 
 #define PROG_CUTOFF 3
 
@@ -680,6 +680,8 @@ struct bitbuddy_allocator {
 
 			num_rounds += 1;
 
+			//printf("progressing in main malloc\n");
+
 		}
 
 
@@ -699,10 +701,17 @@ struct bitbuddy_allocator {
 
 
 			if (index == -1){
+				correct_up_v3(level, offset, levels[level][offset], 0);
 				return -1;
 			}
 
 			uint64_t old = levels[level][offset].unset_both_atomic(index);
+
+			if ((old & ~READ_BOTH(index)) == 0ULL){
+
+				correct_up_v3(level, offset, old, index);
+				//correct_up_v3(level, offset, (old & ~READ_BOTH(index)));
+			}
 
 			if (__popcll(old & READ_BOTH(index)) == 2){
 				return index;
@@ -774,8 +783,13 @@ struct bitbuddy_allocator {
 		while (true){
 
 
+			//printf("Bug in this loop?\n");
+
+
 			//optional load
-			levels[level][offset].global_load_this();
+			uint64_t current_level = levels[level][offset].global_load_this();
+
+			//printf("In this level: %d/%llu %llu: %llx\n", level, num_levels, offset, current_level);
 
 
 			if (!check_at_level(level, bytes_at_level, num_bytes)){
@@ -786,6 +800,8 @@ struct bitbuddy_allocator {
 			//fail as no path from this level.
 			if (index == -1){
 
+				//mayve enable>
+				//correct_up_v2(level, offset);
 
 
 				if (ascend(level, offset)){
@@ -806,6 +822,8 @@ struct bitbuddy_allocator {
 
 
 				if (index == -1){
+					//maybe enable?
+					//correct_up_v2(level, offset);
 					ascend(level, offset);
 					continue;
 
@@ -817,9 +835,8 @@ struct bitbuddy_allocator {
 				void * alloc  = offset_to_malloc(level, offset, index);
 
 
-				//uint64_t items = levels[level][offset];
 
-				correct_up_v2(level, offset);
+				//uint64_t items = levels[level][offset];
 
 
 				return alloc;
@@ -937,19 +954,23 @@ struct bitbuddy_allocator {
 	}
 
 
-	__device__ void correct_up_v2(int level, uint64_t offset){
+	__device__ void correct_up_v2(int level, uint64_t offset, uint64_t items){
 
 		if (level == 0) return;
 
 		do {
 
 
-			uint64_t items = levels[level][offset].global_load_this();
+			//uint64_t items = levels[level][offset].global_load_this();
 
 			//if all bits unset
 			if ((!items) && (level > 0)){
 
-				levels[level-1][offset/32].unset_control_bit_atomic(offset%32);
+				uint64_t next_items = levels[level-1][offset/32].unset_both_atomic(offset%32);
+
+				uint64_t comp = ~READ_BOTH(offset%32);
+
+				items = next_items & comp;
 
 			} else {
 				return;
@@ -958,6 +979,26 @@ struct bitbuddy_allocator {
 
 
 		} while(ascend(level, offset));
+
+	}
+
+
+	__device__ void correct_up_v3(int level, uint64_t offset, uint64_t items, int index){
+
+
+
+		//uint64_t items = levels[level][offset].global_load_this();
+
+		//if all bits unset
+		if ((!(items & ~READ_BOTH(index))) && (level > 0)){
+
+			uint64_t next_items = levels[level-1][offset/32].unset_both_atomic(offset%32);
+
+			//uint64_t comp = ~READ_BOTH(offset%32);
+
+			correct_up_v3(level-1, offset/32, next_items, offset % 32);
+
+		}
 
 	}
 
@@ -977,7 +1018,14 @@ struct bitbuddy_allocator {
 		//all items 1
 		if ((!(~items))){
 
+			uint64_t next_items = levels[level-1][offset/32].unset_both_atomic(offset%32);
+
+
+			//need to unset? force full unset and then compare
+			//need bit unset before
 			if (levels[level][offset].try_swap_empty()){
+
+
 
 					uint64_t next_items = levels[level-1][offset/32].set_both_atomic(offset%32) | READ_BOTH(offset%32);
 					//set the level above
@@ -1000,6 +1048,114 @@ struct bitbuddy_allocator {
 
 		//if neither case, drop it.
 		return;
+
+	}
+
+
+
+	__device__ void correct_empty(int level, uint64_t offset){
+
+
+		if (level == 0) return;
+
+		offset = offset/32;
+
+
+		uint64_t items;
+
+
+
+		do {
+
+
+			items = levels[level-1][offset/32].set_control_bit_atomic(offset%32);
+
+			ascend(level, offset);
+
+
+		} while ((items == 0ULL) && (level != 0));
+
+		return;
+
+
+
+	}
+
+
+	//needs to first unset bit, then swap out level below
+	//on free, set bits up, unless all the bits are set!
+	__device__ int float_up_v3(int level, uint64_t offset, uint64_t items, int index){
+
+
+		//need to first clear upper bit, then unset all
+
+
+		int next_index = offset % 32;
+
+		offset = offset/32;
+
+		if (level == 0) return 0;
+
+
+		//first unset
+		if (__popcll(~(items | READ_BOTH(index))) == 0){
+
+			//unset next_items - next items is up to date.
+			uint64_t next_items = levels[level-1][offset].unset_both_atomic(next_index) & (~READ_BOTH(next_index));
+
+
+			if (levels[level][offset].unset_bits(items)){
+
+
+				return 1 + float_up_v3(level-1, offset, next_items, next_index);
+
+
+
+			} else {
+
+				//on failure reset bit.
+				levels[level-1][offset].set_control_bit_atomic(next_index);
+
+			}
+
+
+
+		}
+
+
+		return 0;
+
+
+	}
+
+
+	__device__ void correct_float_up(int corrections, int level, uint64_t offset){
+
+		while (corrections > 1){
+
+			if (!levels[level][offset].set_bits(~0ULL)){
+
+				printf("Fuckup in correction\n");
+
+			}
+
+
+			ascend(level, offset);
+
+
+		}
+
+
+		//undo last oneeeee
+
+		if (!levels[level][offset].set_bits(~0ULL)){
+
+			printf("Fuckup in correction\n");
+
+		}
+
+
+		levels[level][offset/32].set_both_atomic(offset%32);
 
 	}
 
@@ -1060,10 +1216,27 @@ struct bitbuddy_allocator {
 
 		uint64_t offset = cast_to_offset(alloc);
 
-		uint64_t items = levels[level][offset/32].set_both_atomic(offset%32) | READ_BOTH(offset%32);
+
+		int index = offset%32;
+
+		uint64_t items = levels[level][offset/32].set_both_atomic(offset%32);
 
 
-		float_up_v2(level, offset, items);
+		if (items == 0ULL) {
+
+			correct_empty(level, offset);
+
+		} else if (__popcll(~items) == 2){
+			int count = float_up_v3(level, offset/32, items, index);
+
+
+			if (count > 0) correct_float_up(count, level, offset);
+
+			return;
+
+
+		}
+
 
 	}
 

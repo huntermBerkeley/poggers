@@ -501,6 +501,11 @@ __device__ int get_random_active_bit_control_only(){
 		return (atomicCAS( (unsigned long long int *) this, 0ULL, (unsigned long long int) ext_bits) == 0ULL);
 	}
 
+	__device__ bool unset_bits(uint64_t ext_bits){
+
+		return (atomicCAS( (unsigned long long int *) this, (unsigned long long int) ext_bits, 0ULL) == ext_bits);
+	}
+
 	__device__ uint64_t get_bits(){
 		return bits;
 	}

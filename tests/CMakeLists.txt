@@ -49,3 +49,8 @@ ConfigureExecutable(one_thread_bitarr "${CMAKE_CURRENT_SOURCE_DIR}/src/one_threa
 ConfigureExecutable(bitarr_comp_verify "${CMAKE_CURRENT_SOURCE_DIR}/src/bitarr_comp_verify.cu" "${POGGERS_TESTS_BINARY_DIR}")
 
 ConfigureExecutable(buddy_allocator_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/buddy_allocator_tests.cu" "${POGGERS_TESTS_BINARY_DIR}")
+
+
+ConfigureExecutable(templated_allocator_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/templated_allocator_tests.cu" "${POGGERS_TESTS_BINARY_DIR}")
+
+
