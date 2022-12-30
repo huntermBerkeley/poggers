@@ -49,7 +49,7 @@ template <typename Key, typename Val, std::size_t Partition_Size, std::size_t Bu
 struct __attribute__ ((__packed__)) power_of_n_insert_grouped_buckets {
 
 
-	using int_rep_type = Internal_Rep<Key, Val, Bucket_Size, Partition_Size>;
+	using int_rep_type = Internal_Rep<Key, Val, Partition_Size, Bucket_Size>;
 
 	//tag bits change based on the #of bytes allocated per block
 private:
@@ -110,13 +110,13 @@ public:
 		uint64_t min_cache_lines = (min_buckets-1)/Buckets_per_cache_line+1;
 
 		
-		printf("Min buckets requested! %llu, grouped into %llu groups\n", min_buckets, min_cache_lines);
+		//printf("Min buckets requested! %llu, grouped into %llu groups\n", min_buckets, min_cache_lines);
 
 
 
 		//uint64_t true_nslots = min_buckets;
 
-		printf("Constructing table wtih %llu buckets, %llu slots\n", min_buckets, min_buckets*Bucket_Size);
+		//printf("Constructing table wtih %llu buckets, %llu slots\n", min_buckets, min_buckets*Bucket_Size);
 
 
 		uint64_t bytes_used =  min_cache_lines*sizeof(rep_type);

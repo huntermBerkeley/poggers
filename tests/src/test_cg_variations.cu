@@ -79,40 +79,40 @@
 //using tiny_static_table_4 = poggers::tables::bucketed_table<uint64_t, uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 4, 4, poggers::insert_schemes::bucket_insert, 20, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
 //simple test version
- using tcqf_twelve = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 4, 16, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+ using tcf_twelve = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 4, 16, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
 
 //test version with old buckets
 //this works
-//using tcqf = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::struct_of_arrays, 4, 16, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+//using tcf = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::struct_of_arrays, 4, 16, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
 
 //12-16
-//using tcqf = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 4, 16, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+//using tcf = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 4, 16, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
 //12-8
-//using tcqf_twelve_8 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 4, 8, poggers::insert_schemes::blocked_bucket_insert<10>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+//using tcf_twelve_8 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 4, 8, poggers::insert_schemes::blocked_bucket_insert<10>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
 
 //12-12
-//using tcqf_twelve_12 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 4, 8, poggers::insert_schemes::blocked_bucket_insert<6>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+//using tcf_twelve_12 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 4, 8, poggers::insert_schemes::blocked_bucket_insert<6>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
 
 //12-32
-//using tcqf_twelve_32 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 4, 32, poggers::insert_schemes::blocked_bucket_insert<2>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+//using tcf_twelve_32 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 4, 32, poggers::insert_schemes::blocked_bucket_insert<2>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
 
-//using tcqf_no_back = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 4, 16, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+//using tcf_no_back = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 4, 16, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
 
-//using tcqf_16_16 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 4, 16, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+//using tcf_16_16 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 4, 16, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
-//using tcqf_16_32 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 8, 32, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+//using tcf_16_32 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 8, 32, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
 
 //using warpcore_bloom = warpcore::BloomFilter<uint64_t>;
 
-//using tcqf_8_8 = poggers::tables::static_table<uint64_t,uint8_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint8_t>::representation, 4, 8, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+//using tcf_8_8 = poggers::tables::static_table<uint64_t,uint8_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint8_t>::representation, 4, 8, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
 
 #define gpuErrorCheck(ans) { gpuAssert((ans), __FILE__, __LINE__); }
@@ -519,13 +519,13 @@ __global__ void fp_speed_query_kernel(Filter * filter, Key * keys, Val * vals, u
 
 
 template <typename Filter, typename Val>
-__host__ void test_tcqf_speed(const std::string& filename, int num_bits, int num_batches){
+__host__ void test_tcf_speed(const std::string& filename, int num_bits, int num_batches){
 
 
    using Key = uint64_t;
    //using Val = uint8_t;
 
-   //using Filter = tcqf;
+   //using Filter = tcf;
 
    //std::cout << "Starting " << filename << " " << num_bits << std::endl;
 
@@ -542,11 +542,11 @@ __host__ void test_tcqf_speed(const std::string& filename, int num_bits, int num
 
    uint64_t nitems = Initializer->total()*.9;
 
-   Key * host_keys = load_main_data<Key>(nitems);
-   Val * host_vals = load_main_data<Val>(nitems);
+   Key * host_keys = generate_data<Key>(nitems);
+   Val * host_vals = generate_data<Val>(nitems);
 
 
-   Key * fp_keys = load_alt_data<Key>(nitems);
+   Key * fp_keys = generate_data<Key>(nitems);
 
    Key * dev_keys;
 
@@ -759,7 +759,7 @@ __host__ void test_tcqf_speed(const std::string& filename, int num_bits, int num
 
    double fp_throughput = nitems/(scaling_factor*summed_fp_diff.count());
 
-
+   std::cout << "Name,  insert perf (M/s), lookup perf (M/s), FP perf (M/s)" << std::endl;
    std::cout << filename << ": " << insert_throughput << ", " << lookup_throughput << ", " << fp_throughput <<"." << std::endl;
 
    // std::cout << insert_file << std::endl;
@@ -772,7 +772,7 @@ __host__ void test_tcqf_speed(const std::string& filename, int num_bits, int num
 
 
 template <typename Filter, typename Key, typename Val>
-__host__ void tcqf_find_first_fill(uint64_t num_bits){
+__host__ void tcf_find_first_fill(uint64_t num_bits){
 
 
    //std::cout << "Starting " << filename << " " << num_bits << std::endl;
@@ -795,8 +795,8 @@ __host__ void tcqf_find_first_fill(uint64_t num_bits){
 
    uint64_t nitems = Initializer->total();
 
-   Key * host_keys = load_main_data<Key>(nitems);
-   Val * host_vals = load_main_data<Val>(nitems);
+   Key * host_keys = generate_data<Key>(nitems);
+   Val * host_vals = generate_data<Val>(nitems);
 
 
    Key * dev_keys;
@@ -868,9 +868,9 @@ __host__ void tcqf_find_first_fill(uint64_t num_bits){
 
 // __host__ void test_first_fail(uint64_t num_bits){
 
-//    //tcqf_find_first_fill<tcqf, uint16_t, uint16_t>(num_bits);
+//    //tcf_find_first_fill<tcf, uint16_t, uint16_t>(num_bits);
 
-//    tcqf_find_first_fill<tcqf_no_back, uint64_t, uint16_t>(num_bits);
+//    tcf_find_first_fill<tcf_no_back, uint64_t, uint16_t>(num_bits);
 
 // }
 
@@ -878,18 +878,18 @@ __host__ void tcqf_find_first_fill(uint64_t num_bits){
 __host__ void test_twelve_16(){
 
    printf("test_twelve_16\n");
-   using tcqf_twelve_16_1 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 1, 16, poggers::insert_schemes::blocked_bucket_insert<5>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-   using tcqf_twelve_16_2 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 2, 16, poggers::insert_schemes::blocked_bucket_insert<5>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-   using tcqf_twelve_16_4 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 4, 16, poggers::insert_schemes::blocked_bucket_insert<5>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-   using tcqf_twelve_16_8 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 8, 16, poggers::insert_schemes::blocked_bucket_insert<5>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-   using tcqf_twelve_16_16 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 16, 16, poggers::insert_schemes::blocked_bucket_insert<5>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcf_twelve_16_1 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 1, 16, poggers::insert_schemes::blocked_bucket_insert<5>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcf_twelve_16_2 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 2, 16, poggers::insert_schemes::blocked_bucket_insert<5>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcf_twelve_16_4 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 4, 16, poggers::insert_schemes::blocked_bucket_insert<5>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcf_twelve_16_8 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 8, 16, poggers::insert_schemes::blocked_bucket_insert<5>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcf_twelve_16_16 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 16, 16, poggers::insert_schemes::blocked_bucket_insert<5>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
 
-   test_tcqf_speed<tcqf_twelve_16_1, uint16_t>("tcqf_twelve_16_1 ", 28, 20);
-   test_tcqf_speed<tcqf_twelve_16_2, uint16_t>("tcqf_twelve_16_2 ", 28, 20);
-   test_tcqf_speed<tcqf_twelve_16_4, uint16_t>("tcqf_twelve_16_4 ", 28, 20);
-   test_tcqf_speed<tcqf_twelve_16_8, uint16_t>("tcqf_twelve_16_8 ", 28, 20);
-   test_tcqf_speed<tcqf_twelve_16_16, uint16_t>("tcqf_twelve_16_16", 28, 20);
+   test_tcf_speed<tcf_twelve_16_1, uint16_t>("tcf_twelve_16_1 ", 28, 20);
+   test_tcf_speed<tcf_twelve_16_2, uint16_t>("tcf_twelve_16_2 ", 28, 20);
+   test_tcf_speed<tcf_twelve_16_4, uint16_t>("tcf_twelve_16_4 ", 28, 20);
+   test_tcf_speed<tcf_twelve_16_8, uint16_t>("tcf_twelve_16_8 ", 28, 20);
+   test_tcf_speed<tcf_twelve_16_16, uint16_t>("tcf_twelve_16_16", 28, 20);
 
    printf("\n\n\n");
 
@@ -898,19 +898,16 @@ __host__ void test_twelve_16(){
 __host__ void test_twelve_8(){
 
    printf("test_twelve_8\n");
-   using tcqf_twelve_8_1 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 1, 8, poggers::insert_schemes::blocked_bucket_insert<10>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-   using tcqf_twelve_8_2 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 2, 8, poggers::insert_schemes::blocked_bucket_insert<10>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-   using tcqf_twelve_8_4 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 4, 8, poggers::insert_schemes::blocked_bucket_insert<10>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-   using tcqf_twelve_8_8 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 8, 8, poggers::insert_schemes::blocked_bucket_insert<10>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-   //using tcqf_twelve_16_16 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 16, 16, poggers::insert_schemes::blocked_bucket_insert<5>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcf_twelve_8_1 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 1, 8, poggers::insert_schemes::blocked_bucket_insert<10>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcf_twelve_8_2 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 2, 8, poggers::insert_schemes::blocked_bucket_insert<10>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcf_twelve_8_4 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 4, 8, poggers::insert_schemes::blocked_bucket_insert<10>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcf_twelve_8_8 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 8, 8, poggers::insert_schemes::blocked_bucket_insert<10>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
-
-   test_tcqf_speed<tcqf_twelve_8_1, uint16_t>("tcqf_twelve_8_1 ", 28, 20);
-   test_tcqf_speed<tcqf_twelve_8_2, uint16_t>("tcqf_twelve_8_2 ", 28, 20);
-   test_tcqf_speed<tcqf_twelve_8_4, uint16_t>("tcqf_twelve_8_4 ", 28, 20);
-   test_tcqf_speed<tcqf_twelve_8_8, uint16_t>("tcqf_twelve_8_8 ", 28, 20);
-   //test_tcqf_speed<tcqf_twelve_16_16, uint16_t>("tcqf_twelve_16_16", 28, 20);
-
+   test_tcf_speed<tcf_twelve_8_1, uint16_t>("tcf_twelve_8_1 ", 28, 20);
+   test_tcf_speed<tcf_twelve_8_2, uint16_t>("tcf_twelve_8_2 ", 28, 20);
+   test_tcf_speed<tcf_twelve_8_4, uint16_t>("tcf_twelve_8_4 ", 28, 20);
+   test_tcf_speed<tcf_twelve_8_8, uint16_t>("tcf_twelve_8_8 ", 28, 20);
+   
    printf("\n\n\n");
 
 }
@@ -918,42 +915,42 @@ __host__ void test_twelve_8(){
 __host__ void test_twelve_12(){
 
    printf("test_twelve_12\n");
-   using tcqf_twelve_12_1 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 1, 12, poggers::insert_schemes::blocked_bucket_insert<6>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-   using tcqf_twelve_12_2 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 2, 12, poggers::insert_schemes::blocked_bucket_insert<6>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-   using tcqf_twelve_12_4 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 4, 12, poggers::insert_schemes::blocked_bucket_insert<6>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-   //using tcqf_twelve_12_8 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 8, 8, poggers::insert_schemes::blocked_bucket_insert<5>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-   //using tcqf_twelve_16_16 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 16, 16, poggers::insert_schemes::blocked_bucket_insert<5>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcf_twelve_12_1 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 1, 12, poggers::insert_schemes::blocked_bucket_insert<6>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcf_twelve_12_2 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 2, 12, poggers::insert_schemes::blocked_bucket_insert<6>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcf_twelve_12_4 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 4, 12, poggers::insert_schemes::blocked_bucket_insert<6>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcf_twelve_12_8 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 8, 8, poggers::insert_schemes::blocked_bucket_insert<5>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcf_twelve_16_16 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 16, 16, poggers::insert_schemes::blocked_bucket_insert<5>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
 
-   test_tcqf_speed<tcqf_twelve_12_1, uint16_t>("tcqf_twelve_12_1 ", 28, 20);
-   test_tcqf_speed<tcqf_twelve_12_2, uint16_t>("tcqf_twelve_12_2 ", 28, 20);
-   test_tcqf_speed<tcqf_twelve_12_4, uint16_t>("tcqf_twelve_12_4 ", 28, 20);
-   //test_tcqf_speed<tcqf_twelve_12_8, uint16_t>("tcqf_twelve_12_8 ", 28, 20);
-   //test_tcqf_speed<tcqf_twelve_16_16, uint16_t>("tcqf_twelve_16_16", 28, 20);
+   test_tcf_speed<tcf_twelve_12_1, uint16_t>("tcf_twelve_12_1 ", 28, 20);
+   test_tcf_speed<tcf_twelve_12_2, uint16_t>("tcf_twelve_12_2 ", 28, 20);
+   test_tcf_speed<tcf_twelve_12_4, uint16_t>("tcf_twelve_12_4 ", 28, 20);
+   test_tcf_speed<tcf_twelve_12_8, uint16_t>("tcf_twelve_12_8 ", 28, 20);
+   test_tcf_speed<tcf_twelve_16_16, uint16_t>("tcf_twelve_16_16", 28, 20);
 
    printf("\n\n\n");
 
 }
 
-using tcqf_twelve_32 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 4, 32, poggers::insert_schemes::blocked_bucket_insert<2>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+//using tcf_twelve_32 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 4, 32, poggers::insert_schemes::blocked_bucket_insert<2>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
 __host__ void test_twelve_32(){
 
    printf("test_twelve_32\n");
-   using tcqf_twelve_32_1 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 1, 32, poggers::insert_schemes::blocked_bucket_insert<2>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-   using tcqf_twelve_32_2 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 2, 32, poggers::insert_schemes::blocked_bucket_insert<2>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-   using tcqf_twelve_32_4 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 4, 32, poggers::insert_schemes::blocked_bucket_insert<2>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-   using tcqf_twelve_32_8 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 8, 32, poggers::insert_schemes::blocked_bucket_insert<2>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-   using tcqf_twelve_32_16 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 16, 32, poggers::insert_schemes::blocked_bucket_insert<2>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-   using tcqf_twelve_32_32 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 32, 32, poggers::insert_schemes::blocked_bucket_insert<2>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcf_twelve_32_1 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 1, 32, poggers::insert_schemes::blocked_bucket_insert<2>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcf_twelve_32_2 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 2, 32, poggers::insert_schemes::blocked_bucket_insert<2>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcf_twelve_32_4 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 4, 32, poggers::insert_schemes::blocked_bucket_insert<2>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcf_twelve_32_8 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 8, 32, poggers::insert_schemes::blocked_bucket_insert<2>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcf_twelve_32_16 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 16, 32, poggers::insert_schemes::blocked_bucket_insert<2>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcf_twelve_32_32 = poggers::tables::bucketed_table<uint64_t,uint16_t, poggers::representations::wrapper_half_bucket<uint16_t>::representation, 32, 32, poggers::insert_schemes::blocked_bucket_insert<2>::representation, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
 
-   test_tcqf_speed<tcqf_twelve_32_1, uint16_t>("tcqf_twelve_32_1 ", 28, 20);
-   test_tcqf_speed<tcqf_twelve_32_2, uint16_t>("tcqf_twelve_32_2 ", 28, 20);
-   test_tcqf_speed<tcqf_twelve_32_4, uint16_t>("tcqf_twelve_32_4 ", 28, 20);
-   test_tcqf_speed<tcqf_twelve_32_8, uint16_t>("tcqf_twelve_32_8 ", 28, 20);
-   test_tcqf_speed<tcqf_twelve_32_16, uint16_t>("tcqf_twelve_32_16", 28, 20);
-   test_tcqf_speed<tcqf_twelve_32_32, uint16_t>("tcqf_twelve_32_32", 28, 20);
+   test_tcf_speed<tcf_twelve_32_1, uint16_t>("tcf_twelve_32_1 ", 28, 20);
+   test_tcf_speed<tcf_twelve_32_2, uint16_t>("tcf_twelve_32_2 ", 28, 20);
+   test_tcf_speed<tcf_twelve_32_4, uint16_t>("tcf_twelve_32_4 ", 28, 20);
+   test_tcf_speed<tcf_twelve_32_8, uint16_t>("tcf_twelve_32_8 ", 28, 20);
+   test_tcf_speed<tcf_twelve_32_16, uint16_t>("tcf_twelve_32_16", 28, 20);
+   test_tcf_speed<tcf_twelve_32_32, uint16_t>("tcf_twelve_32_32", 28, 20);
 
    printf("\n\n\n");
 
@@ -962,20 +959,20 @@ __host__ void test_twelve_32(){
 __host__ void test_sixteen_16(){
 
    printf("test_sixteen_16\n");
-   using tcqf_sixteen_16_1 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 1, 16, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-   using tcqf_sixteen_16_2 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 2, 16, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcf_sixteen_16_1 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 1, 16, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcf_sixteen_16_2 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 2, 16, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
-   using tcqf_sixteen_16_4 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 4, 16, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcf_sixteen_16_4 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 4, 16, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
-   using tcqf_sixteen_16_8 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 8, 16, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcf_sixteen_16_8 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 8, 16, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
-   using tcqf_sixteen_16_16 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 16, 16, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcf_sixteen_16_16 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 16, 16, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
-   test_tcqf_speed<tcqf_sixteen_16_1, uint16_t>("tcqf_sixteen_16_1 ", 28, 20);
-   test_tcqf_speed<tcqf_sixteen_16_2, uint16_t>("tcqf_sixteen_16_2 ", 28, 20);
-   test_tcqf_speed<tcqf_sixteen_16_4, uint16_t>("tcqf_sixteen_16_4 ", 28, 20);
-   test_tcqf_speed<tcqf_sixteen_16_8, uint16_t>("tcqf_sixteen_16_8 ", 28, 20);
-   test_tcqf_speed<tcqf_sixteen_16_16, uint16_t>("tcqf_sixteen_16_16", 28, 20);
+   test_tcf_speed<tcf_sixteen_16_1, uint16_t>("tcf_sixteen_16_1 ", 28, 20);
+   test_tcf_speed<tcf_sixteen_16_2, uint16_t>("tcf_sixteen_16_2 ", 28, 20);
+   test_tcf_speed<tcf_sixteen_16_4, uint16_t>("tcf_sixteen_16_4 ", 28, 20);
+   test_tcf_speed<tcf_sixteen_16_8, uint16_t>("tcf_sixteen_16_8 ", 28, 20);
+   test_tcf_speed<tcf_sixteen_16_16, uint16_t>("tcf_sixteen_16_16", 28, 20);
    
    printf("\n\n\n");
 
@@ -984,20 +981,20 @@ __host__ void test_sixteen_16(){
 __host__ void test_sixteen_32(){
 
    printf("test_sixteen_32\n");
-   using tcqf_sixteen_32_1 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 1, 32, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-   using tcqf_sixteen_32_2 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 2, 32, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-   using tcqf_sixteen_32_4 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 4, 32, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-   using tcqf_sixteen_32_8 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 8, 32, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-   using tcqf_sixteen_32_16 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 16, 32, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-   using tcqf_sixteen_32_32 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 32, 32, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcf_sixteen_32_1 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 1, 32, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcf_sixteen_32_2 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 2, 32, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcf_sixteen_32_4 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 4, 32, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcf_sixteen_32_8 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 8, 32, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcf_sixteen_32_16 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 16, 32, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcf_sixteen_32_32 = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint16_t>::representation, 32, 32, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
 
-   test_tcqf_speed<tcqf_sixteen_32_1, uint16_t>("tcqf_sixteen_32_1 ", 28, 20);
-   test_tcqf_speed<tcqf_sixteen_32_2, uint16_t>("tcqf_sixteen_32_2 ", 28, 20);
-   test_tcqf_speed<tcqf_sixteen_32_4, uint16_t>("tcqf_sixteen_32_4 ", 28, 20);
-   test_tcqf_speed<tcqf_sixteen_32_8, uint16_t>("tcqf_sixteen_32_8 ", 28, 20);
-   test_tcqf_speed<tcqf_sixteen_32_16, uint16_t>("tcqf_sixteen_32_16", 28, 20);
-   test_tcqf_speed<tcqf_sixteen_32_32, uint16_t>("tcqf_sixteen_32_32", 28, 20);
+   test_tcf_speed<tcf_sixteen_32_1, uint16_t>("tcf_sixteen_32_1 ", 28, 20);
+   test_tcf_speed<tcf_sixteen_32_2, uint16_t>("tcf_sixteen_32_2 ", 28, 20);
+   test_tcf_speed<tcf_sixteen_32_4, uint16_t>("tcf_sixteen_32_4 ", 28, 20);
+   test_tcf_speed<tcf_sixteen_32_8, uint16_t>("tcf_sixteen_32_8 ", 28, 20);
+   test_tcf_speed<tcf_sixteen_32_16, uint16_t>("tcf_sixteen_32_16", 28, 20);
+   test_tcf_speed<tcf_sixteen_32_32, uint16_t>("tcf_sixteen_32_32", 28, 20);
 
    printf("\n\n\n");
 
@@ -1007,18 +1004,18 @@ __host__ void test_sixteen_32(){
 __host__ void test_eight_8(){
 
    printf("test_8_8\n");
-   using tcqf_8_8_1 = poggers::tables::static_table<uint64_t,uint8_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint8_t>::representation, 1, 8, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-   using tcqf_8_8_2 = poggers::tables::static_table<uint64_t,uint8_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint8_t>::representation, 2, 8, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-   using tcqf_8_8_4 = poggers::tables::static_table<uint64_t,uint8_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint8_t>::representation, 4, 8, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-   using tcqf_8_8_8 = poggers::tables::static_table<uint64_t,uint8_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint8_t>::representation, 8, 8, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcf_8_8_1 = poggers::tables::static_table<uint64_t,uint8_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint8_t>::representation, 1, 8, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcf_8_8_2 = poggers::tables::static_table<uint64_t,uint8_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint8_t>::representation, 2, 8, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcf_8_8_4 = poggers::tables::static_table<uint64_t,uint8_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint8_t>::representation, 4, 8, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+   using tcf_8_8_8 = poggers::tables::static_table<uint64_t,uint8_t, poggers::representations::dynamic_container<poggers::representations::key_container,uint8_t>::representation, 8, 8, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
 
 
 
-   test_tcqf_speed<tcqf_8_8_1, uint8_t>("tcqf_8_8_1 ", 28, 20);
-   test_tcqf_speed<tcqf_8_8_2, uint8_t>("tcqf_8_8_2 ", 28, 20);
-   test_tcqf_speed<tcqf_8_8_4, uint8_t>("tcqf_8_8_4 ", 28, 20);
-   test_tcqf_speed<tcqf_8_8_8, uint8_t>("tcqf_8_8_8 ", 28, 20);
+   test_tcf_speed<tcf_8_8_1, uint8_t>("tcf_8_8_1 ", 28, 20);
+   test_tcf_speed<tcf_8_8_2, uint8_t>("tcf_8_8_2 ", 28, 20);
+   test_tcf_speed<tcf_8_8_4, uint8_t>("tcf_8_8_4 ", 28, 20);
+   test_tcf_speed<tcf_8_8_8, uint8_t>("tcf_8_8_8 ", 28, 20);
 
    printf("\n\n\n");
 
@@ -1070,12 +1067,12 @@ int main(int argc, char** argv) {
    // test_speed<p2_table, key_type, val_type>(&half_split_28);
 
    // poggers::sizing::variadic_size size(100000,100);
-   // tcqf * test_tcqf = tcqf::generate_on_device(&size, 42);
+   // tcf * test_tcf = tcf::generate_on_device(&size, 42);
 
 
    // cudaDeviceSynchronize();
 
-   // tcqf::free_on_device(test_tcqf);
+   // tcf::free_on_device(test_tcf);
 
 
    // warpcore_bloom my_filter((1ULL << 20), 7);
@@ -1088,11 +1085,11 @@ int main(int argc, char** argv) {
    // test_bloom_speed("bloom_results/test", 28, 20, false);
    //test_bloom_speed("bloom_results/test", 30, 20, false);
 
-   //test_tcqf_speed("results/test", 10, 20, true);
+   //test_tcf_speed("results/test", 10, 20, true);
    
 
-   //test_tcqf_speed("results/test", 6, 1, true);
-   //test_tcqf_speed("results/test", 20, 1, true);
+   //test_tcf_speed("results/test", 6, 1, true);
+   //test_tcf_speed("results/test", 20, 1, true);
 
    printf("Starting CG Tests\n");
 

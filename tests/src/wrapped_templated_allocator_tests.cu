@@ -42,14 +42,14 @@ __global__ void test_single_thread_malloc_only(allocator * alloc, uint64_t num_a
 
    for (uint64_t i = 0; i < num_allocs; i++){
 
-      uint64_t test_val = alloc->malloc_offset(1);
+      void * allocation = alloc->malloc(1);
 
-      if (test_val == (~0ULL)){printf("malloc Error\n"); }
+      if (allocation == nullptr){printf("malloc Error\n"); }
 
       else {
 
 
-      if (!alloc->free(test_val)) printf("Free Error\n");
+      if (!alloc->free(allocation)) printf("Free Error\n");
 
 
       }
@@ -68,12 +68,12 @@ __global__ void test_multi_thread_malloc_only(allocator * alloc, uint64_t num_al
 
    if (tid >= num_allocs) return;
 
-   uint64_t test_val = alloc->malloc_offset(1);
+   void * allocation = alloc->malloc(1);
 
 
-   if (test_val != (~0ULL)){
+   if (allocation != nullptr){
 
-      alloc->free(test_val);
+      alloc->free(allocation);
    } else { 
 
       printf("Fail!\n");
@@ -99,17 +99,17 @@ __global__ void test_multi_thread_rounds(allocator * alloc, uint64_t num_allocs,
    for (uint64_t i =0; i < num_rounds; i++){
 
 
-   uint64_t test_val = alloc->malloc_offset(1);
+      void * allocation = alloc->malloc(1);
 
 
-   if (test_val != (~0ULL)){
+      if (allocation != nullptr){
 
-      alloc->free(test_val);
+         alloc->free(allocation);
 
-   } else { 
+      } else { 
 
-      printf("Fail!\n");
-   }
+         printf("Fail!\n");
+      }
 
 
    }
@@ -206,13 +206,13 @@ int main(int argc, char** argv) {
 
    printf(" %d %d %d %d\n", determine_num_allocations<determine_depth<32>::depth>::count, determine_num_allocations<determine_depth<33>::depth>::count, determine_num_allocations<determine_depth<1024>::depth>::count, determine_num_allocations<determine_depth<32768>::depth>::count);
 
-   using allocator = templated_bitbuddy<0,32>;
+   using allocator = bitbuddy_allocator<32,1>;
 
    test_single_thread_alloc<allocator>(1);
 
    test_single_thread_alloc<allocator>(32);
 
-   using allocator_1 = templated_bitbuddy<1,1024>;
+   using allocator_1 = bitbuddy_allocator<1024,1>;
 
 
    //test_multi_thread_alloc<allocator_1>(1024);
@@ -222,7 +222,7 @@ int main(int argc, char** argv) {
    test_multi_thread_alloc_rounds<allocator_1>(1024, 10);
 
 
-   using allocator_2 = templated_bitbuddy<2,32768>;
+   using allocator_2 = bitbuddy_allocator<32768,1>;
 
    //test_multi_thread_alloc<allocator_2>(32768);
 
@@ -231,13 +231,13 @@ int main(int argc, char** argv) {
    //test_single_thread_alloc<allocator_2>(32768);
 
 
-   using allocator_3 = templated_bitbuddy<3, 1048576>;
+   using allocator_3 = bitbuddy_allocator< 1048576,1>;
 
    test_multi_thread_alloc_rounds<allocator_3>(1048576, 10);
 
 
 
-   using allocator_4 = templated_bitbuddy<4, 33554432>;
+   using allocator_4 = bitbuddy_allocator<33554432,1>;
 
    test_multi_thread_alloc_rounds<allocator_4>(33554432, 10);
 

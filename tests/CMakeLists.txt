@@ -54,3 +54,6 @@ ConfigureExecutable(buddy_allocator_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/buddy
 ConfigureExecutable(templated_allocator_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/templated_allocator_tests.cu" "${POGGERS_TESTS_BINARY_DIR}")
 
 
+ConfigureExecutable(wrapped_templated_allocator_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/wrapped_templated_allocator_tests.cu" "${POGGERS_TESTS_BINARY_DIR}")
+
+

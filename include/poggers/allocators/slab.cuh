@@ -321,6 +321,61 @@ struct alloc_bitarr{
 
 	}
 
+
+	//TODO: templatize over size in bytes
+	__device__ bool bit_free(void * allocation, uint64_t size_in_bytes){
+
+
+		int my_offset = ((uint64_t) allocation - (uint64_t) memory)/size_in_bytes;
+
+		int upper_bit = my_offset/64;
+
+		int lower_bit = my_offset % 64; 
+
+
+		//collate thread teams together
+		while (true){
+
+			cg::coalesced_group active_threads = cg::coalesced_threads();
+
+			//only threads that match with the leader may progress.
+
+			int team_upper_bit = active_threads.shfl(upper_bit, 0);
+
+			if (team_upper_bit == upper_bit) break;
+
+			
+
+		}
+
+		//starting team now shares the same upper bit
+		cg::coalesced_group starting_team = cg::coalesced_threads();
+
+
+		uint64_t my_mask = (1ULL << lower_bit);
+
+		uint64_t scanned_mask = cg::inclusive_scan(searching_group, my_mask, cg::bit_or<uint64_t>());
+
+		if (starting_team.thread_rank() == starting_team.size()-1){
+
+			
+
+			if (alloc_bits[upper_bit].set_OR_mask(scanned_mask) | scanned_mask == (~0ULL)){
+
+				manager_bits.set_bit_atomic(upper_bit);
+
+				return manager_bits | SET_BIT_MASK(upper_bit);
+
+			}
+
+		}
+
+
+		return false;
+
+
+	}
+
 	
 
 
@@ -698,6 +753,67 @@ __device__ bool alloc_with_locks(void *& allocation, alloc_bitarr * manager, sto
 	}
 
 	return bit_malloc_result;
+
+
+}
+
+
+template <uint64_t alloc_size>
+struct slab_retreiver {
+
+	uint64_t_bitarr slabs;
+	void * memory;
+	alloc_bitarr bitmaps[31];
+
+
+
+	__device__ void init(void * ext_memory){
+		//set all but top bit
+		slabs = BITMASK(31);
+
+		memory = ext_memory;
+
+	}
+
+
+	__device__ alloc_bitarr * give_bitmap(){
+
+		while (true){
+
+			int index = slabs.get_random_active_bit();
+
+			if (index == -1 ) return nullptr;
+
+			if (slabs.unset_index(index) & SET_BIT_MASK(index)){
+
+				bitmaps[index].init();
+				bitmaps[index].attach_allocation(memory + 4096*size*index);
+
+				return &bitmaps[index];
+
+			}
+
+		}
+
+
+
+
+
+	}
+
+
+	//return a bitmap that belongs to this allocator.
+	__device__ bool free_bitmap(alloc_bitarr * bitmap){
+
+		bitmap->manager_bits.global_load_this();
+		assert(bitmap->manager_bits == (~0ULL));
+
+		int index = ((uint64_t bitmap) - (uint64_t ) bitmaps)/sizeof(alloc_bitarr);
+
+		return (slabs.set_index(index) | SET_BIT_MASK);
+
+	}
+
 
 
 }

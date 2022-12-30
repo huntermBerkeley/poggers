@@ -456,6 +456,18 @@ __device__ int get_random_active_bit_control_only(){
 
 	}
 
+
+	__device__ uint64_t set_index(int index){
+
+		return atomicOr((unsigned long long int *) this, SET_BIT_MASK(index));
+
+	}
+
+	__device__ uint64_t unset_index(int index){
+
+		return atomicAnd((unsigned long long int *) this, ~SET_BIT_MASK(index));
+	}
+
 	//TODO pragmatize this
 	__device__ bool unset_bit_atomic(int index){
 
@@ -508,6 +520,11 @@ __device__ int get_random_active_bit_control_only(){
 
 	__device__ uint64_t get_bits(){
 		return bits;
+	}
+
+	__device__ uint64_t set_OR_mask(uint64_t ext_bits){
+
+		return atomicOr((unsigned long long int *) this, ext_bits);
 	}
 
 	__device__ int bits_before_index(int index){

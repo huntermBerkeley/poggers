@@ -121,7 +121,7 @@ struct templated_bitbuddy{
 
 	}
 
-	__device__ uint64_t malloc_child(uint64_t bytes_needed){
+	__device__ uint64_t malloc_child_old(uint64_t bytes_needed){
 
 		while (true){
 
@@ -145,6 +145,101 @@ struct templated_bitbuddy{
 		}
 
 	}
+
+	__device__ uint64_t malloc_child(uint64_t bytes_needed){
+
+		while (true){
+
+			//mask.global_load_this();
+
+			int index = shrink_index(mask.get_first_active_bit_control());
+
+			if (index == -1) return (~0ULL);
+
+
+			uint64_t offset;
+
+			if ((mask & SET_SECOND_BIT(index)) && (!(mask & SET_FIRST_BIT(index)))){
+
+				offset = children[index].malloc_offset(bytes_needed);
+
+			} else if (mask.unset_lock_bit_atomic(index) & SET_SECOND_BIT(index)){
+
+				offset = children[index].malloc_offset(bytes_needed);
+
+			} else {
+
+				mask.global_load_this();
+				continue;
+			}
+
+			if (offset == (~0ULL)){
+				mask.unset_control_bit_atomic(index);
+				continue;
+			}
+
+			return index*size+offset;
+
+		}
+
+	}
+
+	// __device__ uint64_t malloc_child_v3_temp(uint64_t bytes_needed){
+
+	// 	while (true){
+
+	// 		//mask.global_load_this();
+
+	// 		int index = shrink_index(mask.get_random_active_bit_control());
+
+	// 		if (index == -1) return (~0ULL);
+
+
+	// 		uint64_t offset = children[index].malloc_offset(bytes_needed);
+
+	// 		if (offset == (~0ULL)){
+	// 			mask.unset_control_bit_atomic(index);
+	// 			continue;
+	// 		}
+
+	// 		if (mask & SET_FIRST_BIT(index)){
+
+	// 			if (mask.unset_lock_bit_atomic() & SET_SECOND_BIT){
+
+	// 			} else {
+
+	// 				//00
+	// 				children[index].free(offset);
+	// 			}
+	// 		}
+
+
+
+	// 		if ((mask & SET_SECOND_BIT(index)) && (!(mask & SET_FIRST_BIT(index)))){
+
+	// 			offset = children[index].malloc_offset(bytes_needed);
+
+	// 		} else if (mask.unset_lock_bit_atomic(index) & SET_SECOND_BIT(index)){
+
+	// 			offset = children[index].malloc_offset(bytes_needed);
+
+	// 		} else {
+
+	// 			mask.global_load_this();
+	// 			continue;
+	// 		}
+
+	// 		if (offset == (~0ULL)){
+	// 			mask.unset_control_bit_atomic(index);
+	// 			continue;
+	// 		}
+
+	// 		return index*size+offset;
+
+	// 	}
+
+	// }
+
 
 	__device__ uint64_t malloc_offset(uint64_t bytes_needed){
 
@@ -294,6 +389,127 @@ struct  templated_bitbuddy<0, size_in_bytes> {
 };
 
 
+//32 should return 0
+
+template <uint64_t num_allocations>
+struct determine_depth {
+
+
+	enum {depth = num_allocations > 32 ? determine_depth<num_allocations/32>::depth+1 : 0};
+
+
+};
+
+
+template <>
+struct determine_depth<0> {
+
+
+	enum {depth = 32};
+
+
+};
+
+template <int depth>
+struct determine_num_allocations {
+
+	enum {count = 32 * determine_num_allocations<depth-1>::count };
+
+};
+
+template <>
+struct determine_num_allocations<0> {
+
+	enum {count = 32};
+};
+
+
+template <uint64_t num_allocations, uint64_t size_of_allocation>
+struct bitbuddy_allocator {
+
+	using my_type = bitbuddy_allocator<num_allocations, size_of_allocation>;
+
+	enum {total_size = size_of_allocation*determine_num_allocations<determine_depth<num_allocations>::depth>::count };
+
+	using bitbuddy_type = templated_bitbuddy<determine_depth<num_allocations>::depth, total_size>;
+
+	
+	bitbuddy_type * internal_allocator;
+
+	void * memory;
+
+
+	static __host__ my_type * generate_on_device(){
+
+		my_type host_version;
+
+		void * ext_memory;
+
+		host_version.internal_allocator = bitbuddy_type::generate_on_device();
+
+		if (host_version.internal_allocator == nullptr){
+
+			printf("Allocator could not get enough space\n");
+			assert(1==0);
+		}
+
+		cudaMalloc((void **)&ext_memory, num_allocations*size_of_allocation);
+
+		if (ext_memory == nullptr){
+
+			cudaFree(host_version.internal_allocator);
+
+			printf("Allocator could not get enough memory to handle requested # allocations.\n");
+			assert(1==0);
+		}
+
+		host_version.memory = ext_memory;
+
+		my_type * dev_version;
+
+		//my type is 16 bytes. I'm gonna conservatively estimate that this will always go through.
+		cudaMalloc((void **)&dev_version, sizeof(my_type));
+
+		cudaMemcpy(dev_version, &host_version, sizeof(my_type), cudaMemcpyHostToDevice);
+
+		return dev_version;
+
+
+	}
+
+	static __host__ void free_on_device(my_type * dev_version){
+
+		my_type host_version;
+
+		cudaMemcpy(&host_version, dev_version, sizeof(my_type), cudaMemcpyDeviceToHost);
+
+		cudaFree(dev_version);
+
+		cudaFree(host_version.memory);
+
+		bitbuddy_type::free_on_device(host_version.internal_allocator);
+
+	}
+
+
+	__device__ void * malloc(uint64_t bytes_needed){
+
+		uint64_t offset = internal_allocator->malloc_offset(bytes_needed);
+
+		if (offset == (~0ULL)) return nullptr;
+
+		return (void *) ((uint64_t) memory + offset); 
+	}
+
+
+	__device__ bool free(void * allocation){
+
+		uint64_t offset = ((uint64_t) allocation - (uint64_t) memory);
+
+		return internal_allocator->free(offset);
+	}
+
+};
 
 
 }
