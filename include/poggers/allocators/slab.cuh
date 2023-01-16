@@ -326,7 +326,7 @@ struct alloc_bitarr{
 	__device__ bool bit_free(void * allocation, uint64_t size_in_bytes){
 
 
-		int my_offset = ((uint64_t) allocation - (uint64_t) memory)/size_in_bytes;
+		int my_offset = ((uint64_t) allocation - (uint64_t) memmap)/size_in_bytes;
 
 		int upper_bit = my_offset/64;
 
@@ -354,7 +354,7 @@ struct alloc_bitarr{
 
 		uint64_t my_mask = (1ULL << lower_bit);
 
-		uint64_t scanned_mask = cg::inclusive_scan(searching_group, my_mask, cg::bit_or<uint64_t>());
+		uint64_t scanned_mask = cg::inclusive_scan(starting_team, my_mask, cg::bit_or<uint64_t>());
 
 		if (starting_team.thread_rank() == starting_team.size()-1){
 
@@ -456,7 +456,7 @@ struct storage_bitmap{
 
 				} else {
 					//if you swap out you *must* succeed
-					printf("Failure\n");
+					printf("Failure attaching buffer\n");
 					assert(1==0);
 				}
 
@@ -483,7 +483,7 @@ struct storage_bitmap{
 		//cg::coalesced_group active_threads = cg::coalesced_threads();
 
 		//team shares the load
-		uint64_t local_copy = manager_bits.global_load_this();
+		uint64_t_bitarr local_copy = manager_bits.global_load_this();
 
 		#if DEBUG_PRINTS
 		if (active_threads.thread_rank() == 0){
@@ -492,7 +492,7 @@ struct storage_bitmap{
 		#endif
 		
 
-		while(local_copy.get_fill() != 0){
+		while(local_copy.get_fill() != 0ULL){
 
 			cg::coalesced_group active_threads = cg::coalesced_threads();
 
@@ -758,6 +758,12 @@ __device__ bool alloc_with_locks(void *& allocation, alloc_bitarr * manager, sto
 }
 
 
+//one of these guys is how many bytes?
+
+//exactly
+//2^14 bytes
+//31*(8*66)+16
+
 template <uint64_t alloc_size>
 struct slab_retreiver {
 
@@ -787,7 +793,7 @@ struct slab_retreiver {
 			if (slabs.unset_index(index) & SET_BIT_MASK(index)){
 
 				bitmaps[index].init();
-				bitmaps[index].attach_allocation(memory + 4096*size*index);
+				bitmaps[index].attach_allocation(memory + 4096*alloc_size*index);
 
 				return &bitmaps[index];
 
@@ -808,15 +814,149 @@ struct slab_retreiver {
 		bitmap->manager_bits.global_load_this();
 		assert(bitmap->manager_bits == (~0ULL));
 
-		int index = ((uint64_t bitmap) - (uint64_t ) bitmaps)/sizeof(alloc_bitarr);
+		int index = ((uint64_t) bitmap - (uint64_t ) bitmaps)/sizeof(alloc_bitarr);
 
-		return (slabs.set_index(index) | SET_BIT_MASK);
+		return (slabs.set_index(index) | SET_BIT_MASK(index));
+
+	}
+
+	__device__ void * get_mem_ptr(){
+		return memory;
+	}
+
+
+
+};
+
+
+template <uint64_t alloc_size>
+struct slab_storage {
+
+
+	uint64_t_bitarr slab_markers;
+
+	alloc_bitarr * slab_ptrs[32];
+
+
+	__device__ void init_random_index(alloc_bitarr * slab){
+
+
+		while (true){
+
+
+		slab_markers.global_load_this();
+
+		//only need to replace 00
+		//set to 10 to take ownership
+		//then convert to 11 once threadfence ++ set.
+		int index =  shrink_index(slab_markers.get_random_unset_bit_full());
+
+		//int index = slab_markers.get_random_unset_bit();
+
+		if (index == -1){
+
+			printf("Weird bug in slab storage, too many allocations requested.\n");
+			return;
+
+		}
+
+		if (!(slab_markers.set_control_bit_atomic(index) & SET_SECOND_BIT(index))){
+
+			slab_ptrs[index] = slab;
+			__threadfence();
+			slab_markers.set_lock_bit_atomic(index);
+
+			return;
+
+		}
+
+
+		}
+
+
+	}
+
+	__device__ void init_claimed_index(alloc_bitarr * slab, int index){
+
+
+		slab_markers.global_load_this();
+
+		//only need to replace 00
+		//set to 10 to take ownership
+		//then convert to 11 once threadfence ++ set.
+		if (!(slab_markers.set_control_bit_atomic(index) & SET_SECOND_BIT(index))){
+
+			slab_ptrs[index] = slab;
+			__threadfence();
+			slab_markers.set_lock_bit_atomic(index);
+
+			printf("Thread %llu finished with index %d\n", threadIdx.x+blockIdx.x*blockDim.x, index);
+
+			return;
+
+		} else {
+
+			printf("Bug, can't reset claimed index\n");
+			assert(1==0);
+		}
+
+
+
+
+	}
+
+	//This will be the source of a bug if you are too fast
+	__device__ bool claim_index(int index){
+
+		uint64_t old = slab_markers.unset_both_atomic(index);
+
+
+		if (__popcll(old & READ_BOTH(index)) == 2){
+
+
+			printf("Thread %llu claimed index %d\n", threadIdx.x+blockIdx.x*blockDim.x, index);
+
+			return true;
+
+		}
+
+		if (__popcll(old & READ_BOTH(index)) == 0) return false;
+
+		slab_markers.reset_both_atomic(old, index);
+
+		return false;
+	}
+
+	__device__ int get_random_active_index(){
+
+
+		return shrink_index(slab_markers.get_random_active_bit_full());
+
+	}
+
+	//return nullptr on malloc failure inside of local block
+	//this is a signal to the allocator to go ahead and request a new block
+	//this includes the malloc from the local mapping, so that must be passed in
+	//this version utilizes the warp locks as well
+	__device__ void * malloc(storage_bitmap * local_mapping, int index){
+
+
+		
+		void * my_allocation;
+
+		if (alloc_with_locks(my_allocation, slab_ptrs[index], local_mapping)){
+
+			return my_allocation;
+		}
+
+		return nullptr;
 
 	}
 
 
 
-}
+
+};
 
 
 

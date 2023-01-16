@@ -1338,6 +1338,9 @@ struct bitbuddy_allocator {
 	//In malloc, we are looking for a selection of our size that is 11, and we want to convert it to 00
 	//do this by setting it to 01 first 
 
+
+
+
 	};
 
 

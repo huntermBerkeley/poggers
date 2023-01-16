@@ -64,6 +64,16 @@ __device__ uint get_smid() {
 }
 
 
+__host__ int get_num_streaming_multiprocessors(int which_device){
+
+	cudaDeviceProp prop;
+    	cudaGetDeviceProperties(&prop, which_device);
+     int mp = prop.multiProcessorCount;
+
+     return mp;
+
+}
+
 // __device__ uint64_t reduce_less(cg::coalesced_threads active_threads, uint64_t val){
 
 // 	int i = 1;

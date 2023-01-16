@@ -38,6 +38,33 @@
 
 #include <poggers/tables/bucketed_table.cuh>
 
+#include <poggers/metadata.cuh>
+#include <poggers/hash_schemes/murmurhash.cuh>
+#include <poggers/probing_schemes/double_hashing.cuh>
+#include <poggers/probing_schemes/power_of_two.cuh>
+
+// new container for 2-byte key val pairs
+#include <poggers/representations/grouped_key_val_pair.cuh>
+
+#include <poggers/representations/key_val_pair.cuh>
+#include <poggers/representations/dynamic_container.cuh>
+
+#include <poggers/sizing/default_sizing.cuh>
+
+#include <poggers/insert_schemes/power_of_n_shortcut.cuh>
+
+#include <poggers/insert_schemes/power_of_n_shortcut_buckets.cuh>
+
+#include <poggers/representations/packed_bucket.cuh>
+
+#include <poggers/insert_schemes/linear_insert_buckets.cuh>
+
+#include <poggers/tables/bucketed_table.cuh>
+
+#include <poggers/representations/grouped_storage_sub_bits.cuh>
+
+
+
 #include <stdio.h>
 #include <iostream>
 #include <chrono>
@@ -67,40 +94,55 @@
 
 
 
-using insert_type = poggers::insert_schemes::single_slot_insert<uint64_t, uint64_t, 8, 8, poggers::representations::key_val_pair, 5, poggers::hashers::murmurHasher, poggers::probing_schemes::doubleHasher>;
+// using insert_type = poggers::insert_schemes::single_slot_insert<uint64_t, uint64_t, 8, 8, poggers::representations::key_val_pair, 5, poggers::hashers::murmurHasher, poggers::probing_schemes::doubleHasher>;
 
-using table_type = poggers::tables::static_table<uint64_t, uint64_t, poggers::representations::key_val_pair, 4, 4, poggers::insert_schemes::bucket_insert, 200, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-     // poggers::representations::key_val_pair, 8>
+// using table_type = poggers::tables::static_table<uint64_t, uint64_t, poggers::representations::key_val_pair, 4, 4, poggers::insert_schemes::bucket_insert, 200, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+//      // poggers::representations::key_val_pair, 8>
 
-     //using forst_tier_table_type = poggers::tables::static_table<uint64_t, uint64_t, poggers::representations::key_val_pair, 8, poggers::insert_schemes::single_slot_insert, 20, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+//      //using forst_tier_table_type = poggers::tables::static_table<uint64_t, uint64_t, poggers::representations::key_val_pair, 8, poggers::insert_schemes::single_slot_insert, 20, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
     
-using second_tier_table_type = poggers::tables::static_table<uint64_t, uint64_t, poggers::representations::key_val_pair, 8, 8, poggers::insert_schemes::single_slot_insert, 20, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher, true, table_type>;
+// using second_tier_table_type = poggers::tables::static_table<uint64_t, uint64_t, poggers::representations::key_val_pair, 8, 8, poggers::insert_schemes::single_slot_insert, 20, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher, true, table_type>;
 
-using inner_table = poggers::tables::static_table<uint64_t, uint64_t, poggers::representations::key_val_pair, 8, 8, poggers::insert_schemes::bucket_insert, 20, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+// using inner_table = poggers::tables::static_table<uint64_t, uint64_t, poggers::representations::key_val_pair, 8, 8, poggers::insert_schemes::bucket_insert, 20, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
-using small_double_type = poggers::tables::static_table<uint64_t, uint64_t, poggers::representations::key_val_pair, 8, 8, poggers::insert_schemes::bucket_insert, 20, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher, true, inner_table>;
+// using small_double_type = poggers::tables::static_table<uint64_t, uint64_t, poggers::representations::key_val_pair, 8, 8, poggers::insert_schemes::bucket_insert, 20, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher, true, inner_table>;
 
-using p2_table = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::shortened_key_val_wrapper<uint16_t>::key_val_pair, 8, 16, poggers::insert_schemes::power_of_n_insert_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+// using p2_table = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::shortened_key_val_wrapper<uint16_t>::key_val_pair, 8, 16, poggers::insert_schemes::power_of_n_insert_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
    
-using tier_one_iceberg = poggers::tables::static_table<uint64_t, uint64_t, poggers::representations::key_val_pair, 8, 8, poggers::insert_schemes::bucket_insert, 1, poggers::probing_schemes::linearProber, poggers::hashers::murmurHasher>;
+// using tier_one_iceberg = poggers::tables::static_table<uint64_t, uint64_t, poggers::representations::key_val_pair, 8, 8, poggers::insert_schemes::bucket_insert, 1, poggers::probing_schemes::linearProber, poggers::hashers::murmurHasher>;
 
-using tier_two_icerberg = poggers::tables::static_table<uint64_t, uint64_t, poggers::representations::key_val_pair, 8, 8, poggers::insert_schemes::power_of_n_insert_scheme, 2, poggers::probing_schemes::powerOfTwoHasher, poggers::hashers::murmurHasher>;
+// using tier_two_icerberg = poggers::tables::static_table<uint64_t, uint64_t, poggers::representations::key_val_pair, 8, 8, poggers::insert_schemes::power_of_n_insert_scheme, 2, poggers::probing_schemes::powerOfTwoHasher, poggers::hashers::murmurHasher>;
 
-using tier_three_iceberg = poggers::tables::static_table<uint64_t, uint64_t, poggers::representations::key_val_pair, 8, 8, poggers::insert_schemes::bucket_insert, 10, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-
-
-using tier_two_icerberg_joined = poggers::tables::static_table<uint64_t, uint64_t, poggers::representations::key_val_pair, 8, 8, poggers::insert_schemes::power_of_n_insert_scheme, 2, poggers::probing_schemes::powerOfTwoHasher, poggers::hashers::murmurHasher, true, tier_three_iceberg>;
-
-using iceberg_table = poggers::tables::static_table<uint64_t, uint64_t, poggers::representations::key_val_pair, 8, 64, poggers::insert_schemes::bucket_insert, 1, poggers::probing_schemes::linearProber, poggers::hashers::murmurHasher, true, tier_two_icerberg_joined>;
+// using tier_three_iceberg = poggers::tables::static_table<uint64_t, uint64_t, poggers::representations::key_val_pair, 8, 8, poggers::insert_schemes::bucket_insert, 10, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
 
-using tiny_static_table_4 = poggers::tables::static_table<uint64_t, uint16_t, poggers::representations::shortened_key_val_wrapper<uint16_t>::key_val_pair, 4, 4, poggers::insert_schemes::bucket_insert, 20, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-using tcf = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::shortened_key_val_wrapper<uint16_t>::key_val_pair, 4, 16, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher, true, tiny_static_table_4>;
+// using tier_two_icerberg_joined = poggers::tables::static_table<uint64_t, uint64_t, poggers::representations::key_val_pair, 8, 8, poggers::insert_schemes::power_of_n_insert_scheme, 2, poggers::probing_schemes::powerOfTwoHasher, poggers::hashers::murmurHasher, true, tier_three_iceberg>;
+
+// using iceberg_table = poggers::tables::static_table<uint64_t, uint64_t, poggers::representations::key_val_pair, 8, 64, poggers::insert_schemes::bucket_insert, 1, poggers::probing_schemes::linearProber, poggers::hashers::murmurHasher, true, tier_two_icerberg_joined>;
+
+
+// using tiny_static_table_4 = poggers::tables::static_table<uint64_t, uint16_t, poggers::representations::shortened_key_val_wrapper<uint16_t>::key_val_pair, 4, 4, poggers::insert_schemes::bucket_insert, 20, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+// using tcf = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::shortened_key_val_wrapper<uint16_t>::key_val_pair, 4, 16, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher, true, tiny_static_table_4>;
 
 
 
-using double_buckets = poggers::tables::bucketed_table<uint64_t, uint64_t, poggers::representations::struct_of_arrays, 4, 16, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+using del_backing_table = poggers::tables::bucketed_table<
+    uint64_t, uint8_t,
+    poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<
+        poggers::representations::bit_grouped_container<10, 6>::representation, uint16_t>::representation>::representation,
+    1, 8, poggers::insert_schemes::linear_insert_bucket_scheme, 20, poggers::probing_schemes::doubleHasher,
+    poggers::hashers::murmurHasher>;
+using del_TCF = poggers::tables::bucketed_table<
+    uint64_t, uint8_t,
+    poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<
+        poggers::representations::bit_grouped_container<10, 6>::representation, uint16_t>::representation>::representation,
+    1, 8, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::doubleHasher,
+    poggers::hashers::murmurHasher, true, del_backing_table>;
+
+
+
+//using double_buckets = poggers::tables::bucketed_table<uint64_t, uint64_t, poggers::representations::struct_of_arrays, 4, 16, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 
 
 #define gpuErrorCheck(ans) { gpuAssert((ans), __FILE__, __LINE__); }
@@ -201,7 +243,10 @@ __global__ void speed_insert_kernel_one_thread(Filter * filter, Key * keys, Val 
 
       if (!filter->insert(tile, keys[tid], vals[tid]) && tile.thread_rank() == 0){
       atomicAdd((unsigned long long int *) misses, 1ULL);
-    } 
+    } else {
+
+      filter->remove(tile, keys[tid]);
+    }
     //else{
 
    //    Val test_val = 0;
@@ -572,12 +617,12 @@ __host__ void test_speed_batched(const std::string& filename, Sizing_Type * Init
 }
 
 
-__host__ void test_p2(uint64_t nitems){
+// __host__ void test_p2(uint64_t nitems){
 
-   printf("size: %llu\n", nitems);
-   poggers::sizing::size_in_num_slots<1>half_split_20(nitems);
-   test_speed<p2_table, uint64_t, uint16_t>(&half_split_20);
-}
+//    printf("size: %llu\n", nitems);
+//    poggers::sizing::size_in_num_slots<1>half_split_20(nitems);
+//    test_speed<p2_table, uint64_t, uint16_t>(&half_split_20);
+// }
 
 
 __host__ poggers::sizing::variadic_size generate_size(int nbits){
@@ -620,7 +665,7 @@ int main(int argc, char** argv) {
    poggers::sizing::variadic_size test_size_24 (1ULL << nbits, (1ULL << nbits)/100);
 
    //printf("22 size: %llu\n", test_size_24.total());
-   test_speed_batched<tcqf, uint64_t, uint16_t>("results/test_32", &test_size_24, 20);
+   test_speed_batched<del_TCF, uint64_t, uint8_t>("results/test_32", &test_size_24, 20);
    // test_speed_batched<tcqf, uint64_t, uint16_t>("results/test_24", generate_size(24), 20);
    // test_speed_batched<tcqf, uint64_t, uint16_t>("results/test_26", generate_size(26), 20);
    // test_speed_batched<tcqf, uint64_t, uint16_t>("results/test_28", generate_size(28), 20);
@@ -632,7 +677,7 @@ int main(int argc, char** argv) {
 
    poggers::sizing::size_in_num_slots<1> bucket_size (1ULL<<nbits);
 
-   test_speed_batched<double_buckets, uint64_t,uint64_t>("results/double_buckets", &bucket_size, 20);
+   //test_speed_batched<double_buckets, uint64_t,uint64_t>("results/double_buckets", &bucket_size, 20);
 
    cudaDeviceSynchronize();
 
@@ -683,6 +728,7 @@ int main(int argc, char** argv) {
    // poggers::sizing::size_in_num_slots<3> iceberg_size((1ULL << 28), (1ULL << 28)/8, 1500);
    // test_speed<iceberg_table, uint64_t, uint64_t>(&iceberg_size);
 
+   del_TCF test;
 
 	return 0;
 

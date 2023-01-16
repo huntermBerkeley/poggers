@@ -56,4 +56,7 @@ ConfigureExecutable(templated_allocator_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/t
 
 ConfigureExecutable(wrapped_templated_allocator_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/wrapped_templated_allocator_tests.cu" "${POGGERS_TESTS_BINARY_DIR}")
 
+ConfigureExecutable(simple_merged_allocator_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/simple_merged_allocator_tests.cu" "${POGGERS_TESTS_BINARY_DIR}")
+
+
 

@@ -10,7 +10,7 @@
 
 
 
-#include <poggers/allocators/templated_bitbuddy.cuh>
+#include <poggers/allocators/simple_merged_allocator.cuh>
 
 #include <stdio.h>
 #include <iostream>
@@ -42,7 +42,7 @@ __global__ void test_single_thread_malloc_only(allocator * alloc, uint64_t num_a
 
    for (uint64_t i = 0; i < num_allocs; i++){
 
-      void * allocation = alloc->malloc(1);
+      void * allocation = alloc->malloc();
 
       if (allocation == nullptr){printf("malloc Error\n"); }
 
@@ -68,7 +68,7 @@ __global__ void test_multi_thread_malloc_only(allocator * alloc, uint64_t num_al
 
    if (tid >= num_allocs) return;
 
-   void * allocation = alloc->malloc(1);
+   void * allocation = alloc->malloc();
 
 
    if (allocation != nullptr){
@@ -99,7 +99,7 @@ __global__ void test_multi_thread_rounds(allocator * alloc, uint64_t num_allocs,
    for (uint64_t i =0; i < num_rounds; i++){
 
 
-      void * allocation = alloc->malloc(1);
+      void * allocation = alloc->malloc();
 
 
       if (allocation != nullptr){
@@ -131,7 +131,7 @@ __host__ void test_multi_thread_alloc(uint64_t num_allocs){
 
    cudaDeviceSynchronize();
 
-   test_multi_thread_malloc_only<allocator><<<(num_allocs-1)/1024+1,1024>>>(alloc, num_allocs);
+   test_multi_thread_malloc_only<allocator><<<(num_allocs-1)/512+1,512>>>(alloc, num_allocs);
 
    cudaDeviceSynchronize();
 
@@ -154,7 +154,7 @@ __host__ void test_multi_thread_alloc_rounds(uint64_t num_allocs, uint64_t num_r
 
    auto rounds_start = std::chrono::high_resolution_clock::now();
 
-   test_multi_thread_rounds<allocator><<<(num_allocs-1)/1024+1,1024>>>(alloc, num_allocs, num_rounds);
+   test_multi_thread_rounds<allocator><<<(num_allocs-1)/512+1,512>>>(alloc, num_allocs, num_rounds);
 
    cudaDeviceSynchronize();
 
@@ -202,44 +202,40 @@ int main(int argc, char** argv) {
 
 
 
-   printf("Depth 32: %d 33: %d; 1024: %d; 32768: %d\n", determine_depth<32>::depth, determine_depth<33>::depth, determine_depth<1024>::depth, determine_depth<32768>::depth);
+   // printf("Depth 32: %d 33: %d; 1024: %d; 32768: %d\n", determine_depth<32>::depth, determine_depth<33>::depth, determine_depth<1024>::depth, determine_depth<32768>::depth);
 
-   printf(" %d %d %d %d\n", determine_num_allocations<determine_depth<32>::depth>::count, determine_num_allocations<determine_depth<33>::depth>::count, determine_num_allocations<determine_depth<1024>::depth>::count, determine_num_allocations<determine_depth<32768>::depth>::count);
+   // printf(" %d %d %d %d\n", determine_num_allocations<determine_depth<32>::depth>::count, determine_num_allocations<determine_depth<33>::depth>::count, determine_num_allocations<determine_depth<1024>::depth>::count, determine_num_allocations<determine_depth<32768>::depth>::count);
 
-   using allocator = bitbuddy_allocator<32,128>;
+   using allocator = simple_allocator_one_size<128>;
 
    test_single_thread_alloc<allocator>(1);
 
    test_single_thread_alloc<allocator>(32);
 
-   using allocator_1 = bitbuddy_allocator<1024,10>;
+   // //using allocator_1 = bitbuddy_allocator<1024,1>;
 
 
-   //test_multi_thread_alloc<allocator_1>(1024);
+   // //test_multi_thread_alloc<allocator_1>(1024);
 
-   //test_single_thread_alloc<allocator_1>(1024);
+   // //test_single_thread_alloc<allocator_1>(1024);
 
-   test_multi_thread_alloc_rounds<allocator_1>(1024, 10);
-
-
-   using allocator_2 = bitbuddy_allocator<32768,128>;
-
-   //test_multi_thread_alloc<allocator_2>(32768);
-
-   test_multi_thread_alloc_rounds<allocator_2>(32768, 10);
-
-   //test_single_thread_alloc<allocator_2>(32768);
+   test_multi_thread_alloc_rounds<allocator>(1024, 1);
 
 
-   using allocator_3 = bitbuddy_allocator< 1048576,128>;
+   test_multi_thread_alloc_rounds<allocator>(32768, 1);
 
-   test_multi_thread_alloc_rounds<allocator_3>(1048576, 10);
+   test_multi_thread_alloc_rounds<allocator>(33554432, 1);
 
 
 
-   using allocator_4 = bitbuddy_allocator<33554432,128>;
 
-   test_multi_thread_alloc_rounds<allocator_4>(33554432, 10);
+   // //test_multi_thread_alloc<allocator_2>(32768);
+
+   // test_multi_thread_alloc_rounds<allocator>(32768, 10);
+
+   // test_multi_thread_alloc_rounds<allocator>(1048576, 10);
+
+   // test_multi_thread_alloc_rounds<allocator>(33554432, 10);
 
    
 

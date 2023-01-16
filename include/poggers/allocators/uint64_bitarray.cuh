@@ -72,7 +72,47 @@ struct uint64_t_bitarr {
 	}
 
 	//This only matches operands 
-	__device__ int get_random_active_bit_full(){
+	__device__ int get_random_unset_bit_full(){
+
+		uint64_t tid = threadIdx.x*threadIdx.x;
+
+		//big ol prime *1610612741ULL
+		int random_cutoff = ((tid*1610612741ULL) % 64);
+
+		//does this mask need to check on 64 bit case?
+		//no actually cause there is no functional difference as its just the last bit?
+
+		//these two do the same calculation, but the upper uses half the ops!
+		uint64_t both = ((~bits) & (~bits >>1)) & FULL_BIT_MASK;
+		//uint64_t both = ((bits & FULL_BIT_MASK) >> 1) & (bits & HAS_CHILD_BIT_MASK);
+
+		uint64_t random_mask = ((1ULL << random_cutoff) -1);
+
+		int valid_upper = __ffsll((both) & (~random_mask)) -1;
+
+		if (valid_upper != -1){
+			return valid_upper;
+		}
+
+		//upper bits are not set (from above) so we can save an op for __ffsll and find first set for whole thing.
+		return __ffsll(both) -1;
+
+		// uint64_t random_mask = ((1ULL << random_cutoff) -1);
+
+		// int valid_upper = __ffsll(bits & (~random_mask)) -1;
+
+		// if (valid_upper != -1){
+		// 	return valid_upper;
+		// }
+
+		// //upper bits are not set (from above) so we can save an op for __ffsll and find first set for whole thing.
+		// return __ffsll(bits) -1;
+
+
+	}
+
+
+		__device__ int get_random_active_bit_full(){
 
 		uint64_t tid = threadIdx.x*threadIdx.x;
 
@@ -283,6 +323,44 @@ __device__ int get_random_active_bit_control_only(){
 
 		//upper bits are not set (from above) so we can save an op for __ffsll and find first set for whole thing.
 		return __ffsll(bits) -1;
+
+
+
+		// uint64_t random_mask = ((1ULL << random_cutoff) -1);
+
+		// int valid_upper = __ffsll(bits & (~random_mask)) -1;
+
+		// if (valid_upper != -1){
+		// 	return valid_upper;
+		// }
+
+		// //upper bits are not set (from above) so we can save an op for __ffsll and find first set for whole thing.
+		// return __ffsll(bits) -1;
+
+
+	}
+
+
+		__device__ int get_random_unset_bit(){
+
+		uint64_t tid = threadIdx.x*threadIdx.x;
+
+		//big ol prime *1610612741ULL
+		int random_cutoff = ((tid*1610612741ULL) % 64);
+
+		//does this mask need to check on 64 bit case?
+		//no actually cause there is no functional difference as its just the last bit?
+
+		uint64_t random_mask = ((1ULL << random_cutoff) -1);
+
+		int valid_upper = __ffsll((~bits) & (~random_mask)) -1;
+
+		if (valid_upper != -1){
+			return valid_upper;
+		}
+
+		//upper bits are not set (from above) so we can save an op for __ffsll and find first set for whole thing.
+		return __ffsll(~bits) -1;
 
 
 

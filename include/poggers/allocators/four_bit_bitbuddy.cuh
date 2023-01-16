@@ -12,7 +12,7 @@
 
 #include <poggers/allocators/alloc_utils.cuh>
 
-#include <poggers/allocators/uint64_bitarray.cuh>
+#include <poggers/allocators/four_bit_bitarray.cuh>
 
 #include "stdio.h"
 #include "assert.h"
@@ -46,23 +46,23 @@ __host__ __device__ static int shrink_index(int index){
 
 
 template <int depth, uint64_t size_in_bytes>
-struct templated_bitbuddy{
+struct templated_bitbuddy_four{
 
 
-	using my_type = templated_bitbuddy<depth, size_in_bytes>;
+	using my_type = templated_bitbuddy_four<depth, size_in_bytes>;
 
-	enum { size = size_in_bytes/32 };
+	enum { size = size_in_bytes/16 };
 
-	using child_type = templated_bitbuddy<depth-1, size>;
+	using child_type = templated_bitbuddy_four<depth-1, size>;
 
 	enum {lowest_size = child_type::lowest_size};
 
 	static_assert(size > 0);
 	
 	
-	uint64_t_bitarr mask;
+	four_bit_bitarray mask;
 
-	child_type children[32];
+	child_type children[16];
 
 
 	static __host__ my_type * generate_on_device(){
@@ -100,22 +100,29 @@ struct templated_bitbuddy{
 
 		while (true){
 
-			int index = shrink_index(mask.get_random_active_bit_full());
+			int index = shrink_index(mask.get_random_all_avail());
 
 			if (index == -1) return (~0ULL);
 
-			uint64_t old = mask.unset_both_atomic(index);
+
+			//someone else is working with this lock
+			if (!mask.unset_lock_bit_atomic(index) & SET_LOCK_BIT_FOUR(index)){
+				continue;
+			}
+
+			
 
 
 
-			if (__popcll(old & READ_BOTH(index)) == 2){
+			if (__popcll(old & READ_ALL_FOUR(index)) == 4){
+
+
+				uint64_t old = mask.unset_all_atomic(index);
 
 				return index * size;
 
 			} else {
-
-				mask.reset_both_atomic(old, index);
-
+				mask.set_lock_bit_atomic(index);
 			}
 
 
@@ -123,64 +130,111 @@ struct templated_bitbuddy{
 
 	}
 
-	__device__ uint64_t malloc_child_old(uint64_t bytes_needed){
+	__device__ uint64_t malloc_group(int num_contiguous){
+
 
 		while (true){
 
-			int index = shrink_index(mask.get_random_active_bit_control());
+			int index = shrink_index(mask.get_first_x_contiguous(num_contiguous));
 
 			if (index == -1) return (~0ULL);
 
-			if (mask.unset_lock_bit_atomic(index) & SET_SECOND_BIT(index)){
-				//valid
+			uint64_t lock_mask = x_lock_mask(num_contiguous) << (4*index);
 
-				uint64_t offset = children[index].malloc_offset(bytes_needed);
+			uint64_t acquired_bits = mask.unset_bits(lock_mask) & lock_mask;
 
-				if (offset == (~0ULL)){
-					mask.unset_control_bit_atomic(index);
-					continue;
+			uint64_t acquired_locks = acquired_bits & lock_mask;
+
+			if (__popcll(acquired_locks) == num_contiguous){
+
+				//success? we grabbed all locks
+				acquired_bits = (acquired_bits) & (acquired_bits >> 1);
+
+				acquired_bits = (acquired_bits) & (acquired_bits >> 1) & lock_mask;
+
+				if (__popcll(acquired_bits) == num_contiguous){
+
+					//true success
+					//unset the bits
+
+					//first, unset child bits
+					mask.unset_bits(acquired_bits << 1);
+
+					//then, unset team bits
+					mask.unset_bits(acquired_bits << 2);
+
+					//and unset the last bit
+					mask.unset_continue_bit_atomic(index+num_contiguous-1);
+
 				}
-
-				return index*size + offset;
-			}
 
 		}
 
+		//failures float out and locks are deacquired
+		mask.set_bits(acquired_locks);
+
+
 	}
 
+
+	//cycle endlessly until you find an allocation or none are available.
 	__device__ uint64_t malloc_child(uint64_t bytes_needed){
 
 		while (true){
 
-			//mask.global_load_this();
 
-			int index = shrink_index(mask.get_first_active_bit_control());
+			//first, check if there is a preallocated child available.
+			int index = shrink_index(mask.get_first_child_only());
+
+			if (index != -1){
+
+				uint64_t offset = children[index].malloc_offset(bytes_needed);
+
+				if (offset != (~0ULL)){
+					return index*size+offset;
+				} else {
+
+					//if we failed to read from one of these, then it must not be available
+					if (mask.unset_lock_bit_atomic(offset)){
+
+						//if we are in an understandable state.
+						//if (mask & SET_CHILD_BIT_FOUR(offset)){
+						mask.unset_child_bit_atomic(offset);
+						//}
+						
+						mask.set_lock_bit_atomic(offset);
+					}
+
+				}
+
+				//if we didn't get the alloc, retry?
+				continue;
+
+			}
+
+			index = shrink_index(mask.get_first_child_lock());
 
 			if (index == -1) return (~0ULL);
 
+			if(mask.unset_lock_bit_atomic(index) & SET_LOCK_BIT_FOUR(index)){
 
-			uint64_t offset;
+				//mask definitely has children available! lets set it to a valid state
+				if (mask & SET_CHILD_BIT_FOUR(index)){
 
-			if ((mask & SET_SECOND_BIT(index)) && (!(mask & SET_FIRST_BIT(index)))){
+					//is this slow? yep - I'll fuse them later
+					mask.unset_lock_bit_atomic(index);
+					mask.unset_continue_bit_atomic(index);
+					mask.set_lock_bit_atomic(index);
 
-				offset = children[index].malloc_offset(bytes_needed);
+					//uint64_t offset = children[index].malloc_offset(bytes_needed);
 
-			} else if (mask.unset_lock_bit_atomic(index) & SET_SECOND_BIT(index)){
+				}
 
-				offset = children[index].malloc_offset(bytes_needed);
 
-			} else {
-
-				mask.global_load_this();
-				continue;
 			}
 
-			if (offset == (~0ULL)){
-				mask.unset_control_bit_atomic(index);
-				continue;
-			}
 
-			return index*size+offset;
+			mask.global_load_this();
 
 		}
 
@@ -268,8 +322,9 @@ struct templated_bitbuddy{
 
 	__device__ bool free_at_level(uint64_t offset){
 
-
-		if (__popcll(mask.set_both_atomic(offset) & READ_BOTH(offset)) == 0){
+		//at level we will force to be 0000
+		//no one else can lock.
+		if ((mask.set_all_atomic(offset) & READ_ALL_FOUR(offset)) == 0){
 
 			return true;
 		}
@@ -286,7 +341,17 @@ struct templated_bitbuddy{
 
 		if (children[local_offset].free(offset % size)){
 
-			mask.set_control_bit_atomic(local_offset);
+			mask.unset_lock_bit_atomic(local_offset);
+			if (children[local_offset].all_free()){
+
+				//reset on full reallocation
+				mask.set_all_atomic(local_offset);
+
+				} else {
+
+				mask.set_child_bit_atomic(local_offset);
+
+				}
 			return true;
 
 		}
@@ -303,9 +368,9 @@ struct templated_bitbuddy{
 
 
 template <uint64_t size_in_bytes>
-struct  templated_bitbuddy<0, size_in_bytes> {
+struct  templated_bitbuddy_four<0, size_in_bytes> {
 
-	using my_type = templated_bitbuddy<0, size_in_bytes>;
+	using my_type = templated_bitbuddy_four<0, size_in_bytes>;
 
 	enum {size = size_in_bytes};
 	//TODO double check this, feels like it should be sizeinbytes/32;
@@ -325,18 +390,35 @@ struct  templated_bitbuddy<0, size_in_bytes> {
 
 		while (true){
 
-			int index = shrink_index(mask.get_random_active_bit_full());
+			int index = shrink_index(mask.get_random_all_avail());
 
 			if (index == -1) return (~0ULL);
 
-			if (__popcll(mask.unset_both_atomic(index) & READ_BOTH(index)) == 2){
 
-				return index;
+			//someone else is working with this lock
+			if (!mask.unset_lock_bit_atomic(index) & SET_LOCK_BIT_FOUR(index)){
+				continue;
+			}
 
+			
+
+
+
+			if (__popcll(old & READ_ALL_FOUR(index)) == 4){
+
+
+				uint64_t old = mask.unset_all_atomic(index);
+
+				return index * size;
+
+			} else {
+				mask.set_lock_bit_atomic(index);
 			}
 
 
 		}
+
+	}
 
 
 	}
@@ -346,7 +428,7 @@ struct  templated_bitbuddy<0, size_in_bytes> {
 	__device__ bool free_at_level(uint64_t offset){
 
 
-		if (__popcll(mask.set_both_atomic(offset) & READ_BOTH(offset)) == 0){
+		if (__popcll(mask.set_all_atomic(offset) & READ_ALL_FOUR(offset)) == 0){
 
 			return true;
 		}
@@ -435,7 +517,7 @@ struct bitbuddy_allocator {
 
 	enum {total_size = size_of_allocation*determine_num_allocations<determine_depth<num_allocations>::depth>::count };
 
-	using bitbuddy_type = templated_bitbuddy<determine_depth<num_allocations>::depth, determine_num_allocations<determine_depth<num_allocations>::depth>::count>;
+	using bitbuddy_type = templated_bitbuddy_four<determine_depth<num_allocations>::depth, determine_num_allocations<determine_depth<num_allocations>::depth>::count>;
 
 	
 	bitbuddy_type * internal_allocator;
