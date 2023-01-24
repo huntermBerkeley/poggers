@@ -44,7 +44,7 @@ struct  bucketed_internal_dynamic_container {
 			for (int i = insert_tile.thread_rank(); i < Bucket_Size; i+= Partition_Size){
 
 				//Storage_type * key_ptr = &keys[0];
-				bool filled = !(storage[i].is_empty());
+				bool filled = !(storage[i].is_empty() || storage[i].contains(storage[i].get_tombstone()));
 
 				fill += __popc(insert_tile.ballot(filled));
 
