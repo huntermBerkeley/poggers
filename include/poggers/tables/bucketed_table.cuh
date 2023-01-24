@@ -14,6 +14,9 @@
 
 //#include <poggers/hash_schemes/murmurhash.cuh>
 
+
+#define POGGERS_REMOVE_DEBUG 1
+
 namespace cg = cooperative_groups;
 
 
@@ -82,6 +85,9 @@ struct __attribute__ ((__packed__)) bucketed_table {
 	//tag bits change based on the #of bytes allocated per block
 private:
 
+	#if POGGERS_REMOVE_DEBUG
+	uint64_t * debug_counters;
+	#endif
 
 
 	insert_scheme_type * my_insert_scheme;
@@ -129,6 +135,19 @@ public:
 		my_type * host_table = (my_type *) malloc(sizeof(my_type));
 
 		uint64_t nslots = sizing->next();
+
+			#if POGGERS_REMOVE_DEBUG
+
+			printf("******POGGERS REMOVE DEBUGGING IS ENABLED******\n");
+			printf("If you see this and didn't expect to re-pull POGGERS - should only be enabled on 1/23/23\n");
+			uint64_t * host_debug_counters;
+
+			cudaMallocManaged((void **)&host_debug_counters, sizeof(uint64_t)*2);
+
+			host_debug_counters[0] = 0;
+			host_debug_counters[1] = 0;
+			#endif
+
 
 
 		#if DEBUG_PRINTS
@@ -185,6 +204,10 @@ public:
 		if (Is_Recursive){
 			Recursive_Type::free_on_device(host_version.secondary_table);
 		}
+
+		#if POGGERS_REMOVE_DEBUG
+		cudaFree(host_version->debug_counters);
+		#endif
 
 		cudaFree(dev_version);
 
@@ -320,12 +343,26 @@ public:
 	__device__ bool remove(cg::thread_block_tile<Partition_Size> Insert_tile, Key key){
 
 		if (my_insert_scheme->remove(Insert_tile, key)){
+
+			#if POGGERS_REMOVE_DEBUG
+			//uint64_t * debug_counters;
+			atomicAdd((unsigned long long int *) debug_counters, 1ULL);
+
+
+			Val temp_val;
+			if (query(insert_tile, key, temp_val)){
+				atomicAdd((unsigned long long int *) &debug_counters[1], 1ULL);
+			}
+			#endif
+			
 			return true;
 		} else {
 
 			if (Is_Recursive){
 				return secondary_table->remove(Insert_tile, key);
 			}
+
+
 
 			return false;
 		}
@@ -451,6 +488,12 @@ public:
 	}
 
 	__host__ uint64_t get_fill(){
+
+		#if POGGERS_REMOVE_DEBUG
+		printf("****DEBUG TCF REMOVE****\n");
+		printf("Deleted %llu keys, found %llu of them after removal\n", debug_counters[0], debug_counters[1]);
+
+		#endif
 
 		my_type * host_version;
 

@@ -29,6 +29,12 @@ namespace cg = cooperative_groups;
 #define PROG_CUTOFF 3
 
 
+//Four bit version of the allocator
+//this is *so* slow
+//like seriously how did I think this was a good idea
+//gonna try a pure VEB tree, should be a lot faster
+//grouped allocs will just occur
+
 //a pointer list managing a set section of device memory
 namespace poggers {
 
@@ -36,26 +42,17 @@ namespace poggers {
 namespace allocators { 
 
 
-//compress index into 32 bit index
-__host__ __device__ static int shrink_index(int index){
-	if (index == -1) return index;
 
-	return index/2;
-}
-
-
-
-template <int depth, uint64_t size_in_bytes>
+template <int depth>
 struct templated_bitbuddy_four{
 
 
-	using my_type = templated_bitbuddy_four<depth, size_in_bytes>;
+	using my_type = templated_bitbuddy_four<depth>;
 
-	enum { size = size_in_bytes/16 };
+	enum { size = (1ULL << (4*depth)) };
 
-	using child_type = templated_bitbuddy_four<depth-1, size>;
+	using child_type = templated_bitbuddy_four<depth-1>;
 
-	enum {lowest_size = child_type::lowest_size};
 
 	static_assert(size > 0);
 	
@@ -91,7 +88,18 @@ struct templated_bitbuddy_four{
 
 	__host__ __device__ bool valid_for_alloc(uint64_t ext_size){
 
-		return (size >= ext_size && ext_size >= child_type::size);
+		return (size >= ext_size && ext_size > 15*child_type::size);
+
+	}
+
+
+	//grab a lock for a random full
+	__device__ int acquire_random_lock(){
+
+
+		while (true) {
+			int index = mask.shrink_index(mask.get_random_all_avail());
+		}
 
 	}
 
@@ -100,24 +108,30 @@ struct templated_bitbuddy_four{
 
 		while (true){
 
-			int index = shrink_index(mask.get_random_all_avail());
+			int index = mask.shrink_index(mask.get_random_all_avail());
 
 			if (index == -1) return (~0ULL);
 
+			//grab lock first
+			uint64_t old = mask.unset_lock_bit_atomic(index);
+
+
+
 
 			//someone else is working with this lock
-			if (!mask.unset_lock_bit_atomic(index) & SET_LOCK_BIT_FOUR(index)){
+
+			if (!(old & SET_LOCK_BIT_FOUR(index))){
 				continue;
 			}
 
 			
 
 
+			//3 cause we unlocked it
+			if (__popcll(old & READ_ALL_FOUR(index)) == 3){
 
-			if (__popcll(old & READ_ALL_FOUR(index)) == 4){
 
-
-				uint64_t old = mask.unset_all_atomic(index);
+				mask.unset_all_atomic(index);
 
 				return index * size;
 
@@ -135,11 +149,11 @@ struct templated_bitbuddy_four{
 
 		while (true){
 
-			int index = shrink_index(mask.get_first_x_contiguous(num_contiguous));
+			int index = mask.shrink_index(mask.get_first_x_contiguous(num_contiguous));
 
 			if (index == -1) return (~0ULL);
 
-			uint64_t lock_mask = x_lock_mask(num_contiguous) << (4*index);
+			uint64_t lock_mask = mask.x_lock_mask(num_contiguous) << (4*index);
 
 			uint64_t acquired_bits = mask.unset_bits(lock_mask) & lock_mask;
 
@@ -166,6 +180,10 @@ struct templated_bitbuddy_four{
 					//and unset the last bit
 					mask.unset_continue_bit_atomic(index+num_contiguous-1);
 
+					//free blocks are left in locked state
+
+					return index*size;
+
 				}
 
 		}
@@ -173,6 +191,8 @@ struct templated_bitbuddy_four{
 		//failures float out and locks are deacquired
 		mask.set_bits(acquired_locks);
 
+
+	}
 
 	}
 
@@ -184,7 +204,7 @@ struct templated_bitbuddy_four{
 
 
 			//first, check if there is a preallocated child available.
-			int index = shrink_index(mask.get_first_child_only());
+			int index = mask.shrink_index(mask.get_first_child_only());
 
 			if (index != -1){
 
@@ -195,14 +215,14 @@ struct templated_bitbuddy_four{
 				} else {
 
 					//if we failed to read from one of these, then it must not be available
-					if (mask.unset_lock_bit_atomic(offset)){
+					if (mask.unset_lock_bit_atomic(index) & SET_LOCK_BIT_FOUR(index)){
 
 						//if we are in an understandable state.
 						//if (mask & SET_CHILD_BIT_FOUR(offset)){
-						mask.unset_child_bit_atomic(offset);
+						mask.unset_child_bit_atomic(index);
 						//}
 						
-						mask.set_lock_bit_atomic(offset);
+						mask.set_lock_bit_atomic(index);
 					}
 
 				}
@@ -212,7 +232,7 @@ struct templated_bitbuddy_four{
 
 			}
 
-			index = shrink_index(mask.get_first_child_lock());
+			index = mask.shrink_index(mask.get_first_child_lock());
 
 			if (index == -1) return (~0ULL);
 
@@ -222,7 +242,7 @@ struct templated_bitbuddy_four{
 				if (mask & SET_CHILD_BIT_FOUR(index)){
 
 					//is this slow? yep - I'll fuse them later
-					mask.unset_lock_bit_atomic(index);
+					mask.unset_alloc_bit_atomic(index);
 					mask.unset_continue_bit_atomic(index);
 					mask.set_lock_bit_atomic(index);
 
@@ -246,7 +266,7 @@ struct templated_bitbuddy_four{
 
 	// 		//mask.global_load_this();
 
-	// 		int index = shrink_index(mask.get_random_active_bit_control());
+	// 		int index = mask.shrink_index(mask.get_random_active_bit_control());
 
 	// 		if (index == -1) return (~0ULL);
 
@@ -347,11 +367,12 @@ struct templated_bitbuddy_four{
 				//reset on full reallocation
 				mask.set_all_atomic(local_offset);
 
-				} else {
+			} else {
 
 				mask.set_child_bit_atomic(local_offset);
 
-				}
+			}
+
 			return true;
 
 		}
@@ -367,16 +388,15 @@ struct templated_bitbuddy_four{
 };
 
 
-template <uint64_t size_in_bytes>
-struct  templated_bitbuddy_four<0, size_in_bytes> {
+template <>
+struct  templated_bitbuddy_four<0> {
 
-	using my_type = templated_bitbuddy_four<0, size_in_bytes>;
+	using my_type = templated_bitbuddy_four<0>;
 
-	enum {size = size_in_bytes};
+	enum {size = 1};
 	//TODO double check this, feels like it should be sizeinbytes/32;
-	enum {lowest_size = size_in_bytes/32};
 
-	uint64_t_bitarr mask;
+	four_bit_bitarray mask;
 
 
 	__device__ uint64_t malloc_offset(uint64_t bytes_needed){
@@ -385,29 +405,86 @@ struct  templated_bitbuddy_four<0, size_in_bytes> {
 	}
 
 
-	__device__ uint64_t malloc_at_level(){
+	__device__ uint64_t malloc_group(int num_contiguous){
 
+
+			while (true){
+
+				int index = mask.shrink_index(mask.get_first_x_contiguous(num_contiguous));
+
+				if (index == -1) return (~0ULL);
+
+				uint64_t lock_mask = mask.x_lock_mask(num_contiguous) << (4*index);
+
+				uint64_t acquired_bits = mask.unset_bits(lock_mask) & lock_mask;
+
+				uint64_t acquired_locks = acquired_bits & lock_mask;
+
+				if (__popcll(acquired_locks) == num_contiguous){
+
+					//success? we grabbed all locks
+					acquired_bits = (acquired_bits) & (acquired_bits >> 1);
+
+					acquired_bits = (acquired_bits) & (acquired_bits >> 1) & lock_mask;
+
+					if (__popcll(acquired_bits) == num_contiguous){
+
+						//true success
+						//unset the bits
+
+						//first, unset child bits
+						mask.unset_bits(acquired_bits << 1);
+
+						//then, unset team bits
+						mask.unset_bits(acquired_bits << 2);
+
+						//and unset the last bit
+						mask.unset_continue_bit_atomic(index+num_contiguous-1);
+
+						//free blocks are left in locked state
+
+						return index*size;
+
+					}
+
+			}
+
+			//failures float out and locks are deacquired
+			mask.set_bits(acquired_locks);
+
+
+		}
+
+	}
+
+	__device__ uint64_t malloc_at_level(){
 
 		while (true){
 
-			int index = shrink_index(mask.get_random_all_avail());
+			int index = mask.shrink_index(mask.get_random_all_avail());
 
 			if (index == -1) return (~0ULL);
 
+			//grab lock first
+			uint64_t old = mask.unset_lock_bit_atomic(index);
+
+
+
 
 			//someone else is working with this lock
-			if (!mask.unset_lock_bit_atomic(index) & SET_LOCK_BIT_FOUR(index)){
+
+			if (!(old & SET_LOCK_BIT_FOUR(index))){
 				continue;
 			}
 
 			
 
 
-
+			//4 cause we unlocked it but not in the old version we see
 			if (__popcll(old & READ_ALL_FOUR(index)) == 4){
 
 
-				uint64_t old = mask.unset_all_atomic(index);
+				mask.unset_all_atomic(index);
 
 				return index * size;
 
@@ -420,8 +497,6 @@ struct  templated_bitbuddy_four<0, size_in_bytes> {
 
 	}
 
-
-	}
 
 
 	//returns true if entirely full
@@ -447,6 +522,32 @@ struct  templated_bitbuddy_four<0, size_in_bytes> {
 		return true;
 	}
 
+
+	__host__ __device__ bool all_free(){
+
+
+
+		uint64_t lock_mask = mask.x_lock_mask(16);
+		uint64_t old = mask.unset_bits(lock_mask);
+
+		if (__popcll(old & lock_mask) == 16){
+
+			if ((~mask) == 0){
+				return true;
+			}
+		}
+
+		//return locks we grabbed
+		mask.set_bits(old & lock_mask);
+		return false;
+
+	}
+
+	//only occurs when we grabbed *all* the locks
+	__host__ __device__  void return_all_free(){
+
+		mask.set_bits(mask.x_lock_mask(16));
+	}
 
 
 	static __host__ my_type * generate_on_device(){
@@ -510,106 +611,105 @@ struct determine_num_allocations<0> {
 };
 
 
-template <uint64_t num_allocations, uint64_t size_of_allocation>
-struct bitbuddy_allocator {
+// template <uint64_t num_allocations>
+// struct bitbuddy_allocator {
 
-	using my_type = bitbuddy_allocator<num_allocations, size_of_allocation>;
+// 	using my_type = bitbuddy_allocator<num_allocations>;
 
-	enum {total_size = size_of_allocation*determine_num_allocations<determine_depth<num_allocations>::depth>::count };
 
-	using bitbuddy_type = templated_bitbuddy_four<determine_depth<num_allocations>::depth, determine_num_allocations<determine_depth<num_allocations>::depth>::count>;
+// 	using bitbuddy_type = templated_bitbuddy_four<determine_depth<num_allocations>::depth, determine_num_allocations<determine_depth<num_allocations>::depth>::count>;
 
 	
-	bitbuddy_type * internal_allocator;
+// 	bitbuddy_type * internal_allocator;
 
-	void * memory;
-
-
-	static __host__ my_type * generate_on_device(){
-
-		my_type host_version;
-
-		void * ext_memory;
-
-		host_version.internal_allocator = bitbuddy_type::generate_on_device();
-
-		if (host_version.internal_allocator == nullptr){
-
-			printf("Allocator could not get enough space\n");
-			assert(1==0);
-		}
-
-		cudaMalloc((void **)&ext_memory, num_allocations*size_of_allocation);
-
-		if (ext_memory == nullptr){
-
-			cudaFree(host_version.internal_allocator);
-
-			printf("Allocator could not get enough memory to handle requested # allocations.\n");
-			assert(1==0);
-		}
-
-		host_version.memory = ext_memory;
-
-		my_type * dev_version;
-
-		//my type is 16 bytes. I'm gonna conservatively estimate that this will always go through.
-		cudaMalloc((void **)&dev_version, sizeof(my_type));
-
-		cudaMemcpy(dev_version, &host_version, sizeof(my_type), cudaMemcpyHostToDevice);
-
-		return dev_version;
+// 	void * memory;
 
 
-	}
+// 	static __host__ my_type * generate_on_device(){
 
-	static __host__ void free_on_device(my_type * dev_version){
+// 		my_type host_version;
 
-		my_type host_version;
+// 		void * ext_memory;
 
-		cudaMemcpy(&host_version, dev_version, sizeof(my_type), cudaMemcpyDeviceToHost);
+// 		host_version.internal_allocator = bitbuddy_type::generate_on_device();
 
-		cudaFree(dev_version);
+// 		if (host_version.internal_allocator == nullptr){
 
-		cudaFree(host_version.memory);
+// 			printf("Allocator could not get enough space\n");
+// 			assert(1==0);
+// 		}
 
-		bitbuddy_type::free_on_device(host_version.internal_allocator);
+// 		cudaMalloc((void **)&ext_memory, num_allocations*size_of_allocation);
 
-	}
+// 		if (ext_memory == nullptr){
 
+// 			cudaFree(host_version.internal_allocator);
 
-	__device__ void * malloc(uint64_t bytes_needed){
+// 			printf("Allocator could not get enough memory to handle requested # allocations.\n");
+// 			assert(1==0);
+// 		}
 
-		uint64_t offset = internal_allocator->malloc_offset((bytes_needed-1)/size_of_allocation+1);
+// 		host_version.memory = ext_memory;
 
-		if (offset == (~0ULL)) return nullptr;
+// 		my_type * dev_version;
 
-		return (void *) ((uint64_t) memory + offset*size_of_allocation); 
-	}
+// 		//my type is 16 bytes. I'm gonna conservatively estimate that this will always go through.
+// 		cudaMalloc((void **)&dev_version, sizeof(my_type));
 
+// 		cudaMemcpy(dev_version, &host_version, sizeof(my_type), cudaMemcpyHostToDevice);
 
-	__device__ bool free(void * allocation){
-
-		uint64_t offset = ((uint64_t) allocation - (uint64_t) memory)/size_of_allocation;
-
-		return internal_allocator->free(offset);
-	}
-
-
-	__host__ __device__ bool is_bitbuddy_alloc(void * allocation){
+// 		return dev_version;
 
 
-		//all allocations from the bitbuddy must be in the stride of the bitbuddy.
-		//since internals are offset by light of their allocation this is an easy check.
-		return ((uint64_t) allocation % bitbuddy_type::lowest_size == allocation);
+// 	}
+
+// 	static __host__ void free_on_device(my_type * dev_version){
+
+// 		my_type host_version;
+
+// 		cudaMemcpy(&host_version, dev_version, sizeof(my_type), cudaMemcpyDeviceToHost);
+
+// 		cudaFree(dev_version);
+
+// 		cudaFree(host_version.memory);
+
+// 		bitbuddy_type::free_on_device(host_version.internal_allocator);
+
+// 	}
+
+
+// 	__device__ void * malloc(uint64_t bytes_needed){
+
+// 		uint64_t offset = internal_allocator->malloc_offset((bytes_needed-1)/size_of_allocation+1);
+
+// 		if (offset == (~0ULL)) return nullptr;
+
+// 		return (void *) ((uint64_t) memory + offset*size_of_allocation); 
+// 	}
+
+
+// 	__device__ bool free(void * allocation){
+
+// 		uint64_t offset = ((uint64_t) allocation - (uint64_t) memory)/size_of_allocation;
+
+// 		return internal_allocator->free(offset);
+// 	}
+
+
+// 	__host__ __device__ bool is_bitbuddy_alloc(void * allocation){
+
+
+// 		//all allocations from the bitbuddy must be in the stride of the bitbuddy.
+// 		//since internals are offset by light of their allocation this is an easy check.
+// 		return ((uint64_t) allocation % bitbuddy_type::lowest_size == allocation);
 		
-		//could also make sure offset is internal but whatevs.
-		//kind of on you to not free from the wrong allocator lol
-		//uint64_t offset = ((uint64_t allocation) - (uint64_t) memory);
+// 		//could also make sure offset is internal but whatevs.
+// 		//kind of on you to not free from the wrong allocator lol
+// 		//uint64_t offset = ((uint64_t allocation) - (uint64_t) memory);
 
-	}
+// 	}
 
-};
+// };
 
 
 }

@@ -108,13 +108,13 @@ struct four_bit_bitarray {
 
 		both = ((both) & (both >> 1)) & HAS_LOCK_FOUR_BIT_MASK;
 
-		int index = __ffsll(both & UPPER_BITMASK(random_cutoff));
+		int index = __ffsll(both & UPPER_BITMASK(random_cutoff))-1;
 
 		//option 1 branchless comp?
 		//return (index == -1 ? (__ffsll(both) -1) : index);
 
 		//option 2 - think this is truly branchless
-		return (index == -1) * index + (index != -1) * (__ffsll(both)-1);
+		return (index != -1) * index + (index == -1) * (__ffsll(both)-1);
 
 	}
 
@@ -168,13 +168,13 @@ struct four_bit_bitarray {
 
 		//both = ((both) & (both >> 1)) & HAS_LOCK_FOUR_BIT_MASK;
 
-		int index = __ffsll(both & UPPER_BITMASK(random_cutoff));
+		int index = __ffsll(both & UPPER_BITMASK(random_cutoff))-1;
 
 		//option 1 branchless comp?
 		//return (index == -1 ? (__ffsll(both) -1) : index);
 
 		//option 2 - think this is truly branchless
-		return (index == -1) * index + (index != -1) * (__ffsll(both)-1);
+		return (index != -1) * index + (index == -1) * (__ffsll(both)-1);
 
 	}
 
@@ -185,7 +185,7 @@ struct four_bit_bitarray {
 
 		//both = ((both) & (both >> 1)) & HAS_LOCK_FOUR_BIT_MASK;
 
-		return __ffsll(both);
+		return __ffsll(both)-1;
 
 	}
 
@@ -193,7 +193,7 @@ struct four_bit_bitarray {
 
 		uint64_t both = ((bits) & (bits >> 1)) & HAS_LOCK_FOUR_BIT_MASK;
 
-		return __ffsll(both);
+		return __ffsll(both)-1;
 		
 	}
 
@@ -204,7 +204,7 @@ struct four_bit_bitarray {
 		//this reverses the alloc bit - we explicity don't want fully bits
 		uint64_t both = ((bits) & (~(bits >> 1))) & HAS_CHILD_FOUR_BIT_MASK;
 
-		return __ffsll(both);
+		return __ffsll(both)-1;
 		
 	}
 
