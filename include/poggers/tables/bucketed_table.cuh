@@ -15,7 +15,7 @@
 //#include <poggers/hash_schemes/murmurhash.cuh>
 
 
-#define POGGERS_REMOVE_DEBUG 0
+#define POGGERS_REMOVE_DEBUG 1
 
 namespace cg = cooperative_groups;
 
@@ -146,6 +146,9 @@ public:
 
 			host_debug_counters[0] = 0;
 			host_debug_counters[1] = 0;
+
+
+			host_table->debug_counters = host_debug_counters;
 			#endif
 
 
