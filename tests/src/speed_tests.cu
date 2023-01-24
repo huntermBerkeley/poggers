@@ -214,13 +214,12 @@ __global__ void speed_insert_kernel(Filter * filter, Key * keys, Val * vals, uin
 
 
    if (!filter->insert(tile, keys[tid], vals[tid]) && tile.thread_rank() == 0){
-      //atomicAdd((unsigned long long int *) misses, 1ULL);
-   } 
-      //else{
+      atomicAdd((unsigned long long int *) misses, 1ULL);
+   } else{
 
-   //    Val test_val = 0;
-   //    assert(filter->query(tile, keys[tid], test_val));
-   // }
+      Val test_val = 0;
+      assert(filter->query(tile, keys[tid], test_val));
+   }
 
    //assert(filter->insert(tile, keys[tid], vals[tid]));
 
@@ -242,6 +241,7 @@ __global__ void speed_insert_kernel_one_thread(Filter * filter, Key * keys, Val 
       if (tid % 10 == 0 && tile.thread_rank() == 0) printf("%llu\n", tid);
 
       if (!filter->insert(tile, keys[tid], vals[tid]) && tile.thread_rank() == 0){
+
       atomicAdd((unsigned long long int *) misses, 1ULL);
     } else {
 
@@ -262,6 +262,21 @@ __global__ void speed_insert_kernel_one_thread(Filter * filter, Key * keys, Val 
 
 }
 
+
+template <typename Filter, typename Key, typename Val>
+__global__ void speed_delete_kernel(Filter * filter, Key * keys, Val * vals, uint64_t nvals){
+
+   auto tile = filter->get_my_tile();
+
+   uint64_t tid = tile.meta_group_size()*blockIdx.x + tile.meta_group_rank();
+
+   if (tid >= nvals) return;
+
+   filter->remove(tile,keys[tid]);
+   //assert(filter->query(tile, keys[tid], val));
+
+
+}
 
 
 template <typename Filter, typename Key, typename Val>
@@ -490,6 +505,15 @@ __host__ void test_speed_batched(const std::string& filename, Sizing_Type * Init
       auto fp_end = std::chrono::high_resolution_clock::now();
 
       fp_diff[i] = fp_end-fp_start;
+
+
+
+      speed_delete_kernel<Filter, Key, Val><<<test_filter->get_num_blocks(items_in_this_batch),test_filter->get_block_size(items_in_this_batch)>>>(test_filter, dev_keys, dev_vals, items_in_this_batch);
+
+      cudaDeviceSynchronize();
+
+      test_filter->get_fill();
+
 
 
       cudaFree(dev_keys);

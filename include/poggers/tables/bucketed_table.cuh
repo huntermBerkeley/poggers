@@ -15,7 +15,7 @@
 //#include <poggers/hash_schemes/murmurhash.cuh>
 
 
-#define POGGERS_REMOVE_DEBUG 1
+#define POGGERS_REMOVE_DEBUG 0
 
 namespace cg = cooperative_groups;
 
@@ -196,6 +196,11 @@ public:
 
 		#if DEBUG_PRINTS
 		printf("Freeing on Device\n");
+		#endif
+
+		#if POGGERS_REMOVE_DEBUG
+
+		printf("In Free\n");
 		#endif
 
 		my_type host_version;
@@ -492,17 +497,20 @@ public:
 
 	__host__ uint64_t get_fill(){
 
-		#if POGGERS_REMOVE_DEBUG
-		printf("****DEBUG TCF REMOVE****\n");
-		printf("Deleted %llu keys, found %llu of them after removal\n", debug_counters[0], debug_counters[1]);
 
-		#endif
 
 		my_type * host_version;
 
 		cudaMallocHost((void **)&host_version, sizeof(my_type));
 
 		cudaMemcpy(host_version, this, sizeof(my_type), cudaMemcpyDeviceToHost);
+
+
+		#if POGGERS_REMOVE_DEBUG
+		printf("****DEBUG TCF REMOVE****\n");
+		printf("Deleted %llu keys, found %llu of them after removal\n", host_version->debug_counters[0], host_version->debug_counters[1]);
+
+		#endif
 
 		uint64_t num_buckets = host_version->my_insert_scheme->host_get_num_buckets();
 
