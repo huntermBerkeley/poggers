@@ -15,7 +15,7 @@
 //#include <poggers/hash_schemes/murmurhash.cuh>
 
 
-#define POGGERS_REMOVE_DEBUG 0
+#define POGGERS_REMOVE_DEBUG 1
 
 namespace cg = cooperative_groups;
 
