@@ -40,7 +40,7 @@ template<typename Key, typename Val, typename Storage, size_t key_bits, size_t v
 __host__ __device__ Key retrieve_key_from_storage(Storage my_storage){
 
 	//split 
-	return (my_storage & (((Storage{1}) << key_bits) -1));
+	return (my_storage & ((1ULL << key_bits) -1));
 
 	// Storage mask = ((((Storage) 0) << (sizeof(Val)*8)) -1) << sizeof(Key);
 
@@ -54,7 +54,7 @@ __host__ __device__ Val retrieve_val_from_storage(Storage my_storage){
 	//split 
 	//my_key = my_storage & ((((Storage) 0) << sizeof(Key)*8) -1);
 
-	Storage lower_bits = (((Storage{1}) << val_bits) -1);
+	Storage lower_bits = ((1ULL << val_bits) -1);
 
 
 
@@ -122,6 +122,7 @@ struct  grouped_bits_pair {
 		//constructor
 		__host__ __device__ grouped_bits_pair (Key const & key, Val const & val)
 		: my_storage(join_in_storage<Key, Val, storage_type, key_bits, val_bits>(key, val)){}
+
 
 		__device__ __inline__ bool atomic_swap(Key const ext_key, Val const ext_val){
 

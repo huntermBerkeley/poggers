@@ -125,6 +125,8 @@
 // using tiny_static_table_4 = poggers::tables::static_table<uint64_t, uint16_t, poggers::representations::shortened_key_val_wrapper<uint16_t>::key_val_pair, 4, 4, poggers::insert_schemes::bucket_insert, 20, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 // using tcf = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::shortened_key_val_wrapper<uint16_t>::key_val_pair, 4, 16, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher, true, tiny_static_table_4>;
 
+using tiny_static_table_4 = poggers::tables::static_table<uint64_t, uint16_t, poggers::representations::dynamic_container<poggers::representations::key_val_pair,uint16_t>::representation, 4, 4, poggers::insert_schemes::bucket_insert, 20, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+using tcf = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_val_pair,uint16_t>::representation, 4, 16, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher, true, tiny_static_table_4>;
 
 
 using del_backing_table = poggers::tables::bucketed_table<
@@ -140,6 +142,9 @@ using del_TCF = poggers::tables::bucketed_table<
     1, 8, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::doubleHasher,
     poggers::hashers::murmurHasher, true, del_backing_table>;
 
+
+
+// shortened_key_val_wrapper
 
 
 //using double_buckets = poggers::tables::bucketed_table<uint64_t, uint64_t, poggers::representations::struct_of_arrays, 4, 16, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
@@ -264,7 +269,7 @@ __global__ void speed_insert_kernel_one_thread(Filter * filter, Key * keys, Val 
 
 
 template <typename Filter, typename Key, typename Val>
-__global__ void speed_delete_kernel(Filter * filter, Key * keys, Val * vals, uint64_t nvals){
+__global__ void speed_delete_kernel(Filter * filter, Key * keys, Val * vals, uint64_t nvals, uint64_t * del_misses, uint64_t * del_failures){
 
    auto tile = filter->get_my_tile();
 
@@ -272,7 +277,30 @@ __global__ void speed_delete_kernel(Filter * filter, Key * keys, Val * vals, uin
 
    if (tid >= nvals) return;
 
-   filter->remove(tile,keys[tid]);
+   if (!filter->remove(tile,keys[tid]) ){
+
+      Val val;
+      val+=0;
+
+      filter->query(tile, keys[tid], val);
+      filter->remove(tile, keys[tid]);
+
+      filter->query(tile, keys[tid], val);
+
+      if ( tile.thread_rank() == 0) atomicAdd((unsigned long long int *) del_misses, 1ULL);
+
+   } else {
+
+      Val val;
+      //thank you compiler very cool
+      val +=0 ;
+      if (filter->query(tile,keys[tid], val) && tile.thread_rank() == 0 ){
+
+         atomicAdd((unsigned long long int *) del_failures, 1ULL);
+
+      }
+
+   }
    //assert(filter->query(tile, keys[tid], val));
 
 
@@ -416,7 +444,7 @@ __host__ void test_speed_batched(const std::string& filename, Sizing_Type * Init
 
    uint64_t * misses;
 
-   cudaMallocManaged((void **)& misses, sizeof(uint64_t)*5);
+   cudaMallocManaged((void **)& misses, sizeof(uint64_t)*7);
    cudaDeviceSynchronize();
 
    misses[0] = 0;
@@ -424,6 +452,10 @@ __host__ void test_speed_batched(const std::string& filename, Sizing_Type * Init
    misses[2] = 0;
    misses[3] = 0;
    misses[4] = 0;
+
+   //deletes
+   misses[5] = 0;
+   misses[6] = 0;
 
    //static seed for testing
    Filter * test_filter = Filter::generate_on_device(Initializer, 42);
@@ -507,12 +539,16 @@ __host__ void test_speed_batched(const std::string& filename, Sizing_Type * Init
       fp_diff[i] = fp_end-fp_start;
 
 
-
-      speed_delete_kernel<Filter, Key, Val><<<test_filter->get_num_blocks(items_in_this_batch),test_filter->get_block_size(items_in_this_batch)>>>(test_filter, dev_keys, dev_vals, items_in_this_batch);
+      cudaMemcpy(dev_keys, host_keys+start_of_batch, items_in_this_batch*sizeof(Key), cudaMemcpyHostToDevice);
+      cudaMemcpy(dev_vals, host_vals+start_of_batch, items_in_this_batch*sizeof(Val), cudaMemcpyHostToDevice);
 
       cudaDeviceSynchronize();
 
-      test_filter->get_fill();
+      speed_delete_kernel<Filter, Key, Val><<<test_filter->get_num_blocks(items_in_this_batch),test_filter->get_block_size(items_in_this_batch)>>>(test_filter, dev_keys, dev_vals, items_in_this_batch, &misses[5], &misses[6]);
+
+      cudaDeviceSynchronize();
+
+      //test_filter->get_fill();
 
 
 
@@ -536,7 +572,7 @@ __host__ void test_speed_batched(const std::string& filename, Sizing_Type * Init
    //time to output
 
 
-   printf("%llu %llu %llu %llu %llu %llu\n", nitems, misses[0], misses[1], misses[2], misses[3], misses[4]);
+   printf("nitems %llu inserts %llu queries %llu %llu fps %llu %llu deletes %llu %llu\n", nitems, misses[0], misses[1], misses[2], misses[3], misses[4], misses[5], misses[6]);
 
    std::chrono::duration<double> summed_insert_diff = std::chrono::nanoseconds::zero();
 
@@ -686,9 +722,11 @@ int main(int argc, char** argv) {
 
    int nbits = 20;
 
-   poggers::sizing::variadic_size test_size_24 (1ULL << nbits, (1ULL << nbits)/100);
 
-   //printf("22 size: %llu\n", test_size_24.total());
+   //for MHM TCF size to .9 and .1
+   poggers::sizing::variadic_size test_size_24 (.9*(1ULL << nbits), .10*(1ULL << nbits));
+
+   // //printf("22 size: %llu\n", test_size_24.total());
    test_speed_batched<del_TCF, uint64_t, uint8_t>("results/test_32", &test_size_24, 20);
    // test_speed_batched<tcqf, uint64_t, uint16_t>("results/test_24", generate_size(24), 20);
    // test_speed_batched<tcqf, uint64_t, uint16_t>("results/test_26", generate_size(26), 20);
@@ -696,6 +734,12 @@ int main(int argc, char** argv) {
    // test_speed_batched<tcqf, uint64_t, uint16_t>("results/test_30", generate_size(30), 20);
 
    cudaDeviceSynchronize();
+
+
+   // poggers::sizing::variadic_size test_size_24_tcf ((1ULL << nbits), (1ULL << nbits)/100);
+
+   // //printf("22 size: %llu\n", test_size_24.total());
+   // test_speed_batched<tcf, uint64_t, uint16_t>("results/test_32", &test_size_24_tcf, 20);
 
 
 

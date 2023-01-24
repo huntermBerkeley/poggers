@@ -232,6 +232,7 @@ struct  bucketed_internal_dynamic_container {
 					if (leader == insert_tile.thread_rank()){
 
 						ballot = storage[i].atomic_reset(ext_key);
+						//ballot = true;
 						//poggers::helpers::sub_byte_replace<Key>(&keys, ext_key, get_tombstone(), i);
 						//ballot = typed_atomic_write(&keys[i], ext_key, get_tombstone());
 					}

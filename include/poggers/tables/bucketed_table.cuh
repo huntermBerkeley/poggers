@@ -15,7 +15,7 @@
 //#include <poggers/hash_schemes/murmurhash.cuh>
 
 
-#define POGGERS_REMOVE_DEBUG 0
+#define POGGERS_REMOVE_DEBUG 1
 
 namespace cg = cooperative_groups;
 
@@ -138,8 +138,8 @@ public:
 
 			#if POGGERS_REMOVE_DEBUG
 
-			printf("******POGGERS REMOVE DEBUGGING IS ENABLED******\n");
-			printf("If you see this and didn't expect to re-pull POGGERS - should only be enabled on 1/23/23\n");
+			//printf("******POGGERS REMOVE DEBUGGING IS ENABLED******\n");
+			//printf("If you see this and didn't expect to re-pull POGGERS - should only be enabled on 1/23/23\n");
 			uint64_t * host_debug_counters;
 
 			cudaMallocManaged((void **)&host_debug_counters, sizeof(uint64_t)*2);
