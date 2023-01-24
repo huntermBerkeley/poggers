@@ -206,7 +206,7 @@ public:
 		}
 
 		#if POGGERS_REMOVE_DEBUG
-		cudaFree(host_version->debug_counters);
+		cudaFree(host_version.debug_counters);
 		#endif
 
 		cudaFree(dev_version);
@@ -350,7 +350,7 @@ public:
 
 
 			Val temp_val;
-			if (query(insert_tile, key, temp_val)){
+			if (query(Insert_tile, key, temp_val)){
 				atomicAdd((unsigned long long int *) &debug_counters[1], 1ULL);
 			}
 			#endif
