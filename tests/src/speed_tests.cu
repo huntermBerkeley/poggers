@@ -269,7 +269,7 @@ __global__ void speed_insert_kernel_one_thread(Filter * filter, Key * keys, Val 
 
 
 template <typename Filter, typename Key, typename Val>
-__global__ void speed_delete_kernel(Filter * filter, Key * keys, Val * vals, uint64_t nvals, uint64_t * del_misses, uint64_t * del_failures){
+__global__ void speed_delete_kernel(Filter * filter, Key * keys, uint64_t nvals, uint64_t * del_misses, uint64_t * del_failures){
 
    auto tile = filter->get_my_tile();
 
@@ -305,6 +305,53 @@ __global__ void speed_delete_kernel(Filter * filter, Key * keys, Val * vals, uin
 
 
 }
+
+
+template <typename Filter, typename Key, typename Val>
+__global__ void speed_delete_single_thread(Filter * filter, Key * keys, uint64_t nvals, uint64_t * del_misses, uint64_t * del_failures){
+
+   auto tile = filter->get_my_tile();
+
+   uint64_t tid = tile.meta_group_size()*blockIdx.x + tile.meta_group_rank();
+
+   if (tid != 0) return;
+
+
+   for (uint64_t i=0; i < nvals; i++){
+
+      if (!filter->remove(tile,keys[i]) ){
+
+      Val val;
+      val+=0;
+
+      filter->query(tile, keys[i], val);
+      filter->remove(tile, keys[i]);
+
+      filter->query(tile, keys[i], val);
+
+      if ( tile.thread_rank() == 0) atomicAdd((unsigned long long int *) del_misses, 1ULL);
+
+   } else {
+
+      Val val;
+      //thank you compiler very cool
+      val +=0 ;
+      if (filter->query(tile,keys[i], val) && tile.thread_rank() == 0 ){
+
+         atomicAdd((unsigned long long int *) del_failures, 1ULL);
+
+      }
+
+   }
+
+
+   }
+   
+   //assert(filter->query(tile, keys[tid], val));
+
+
+}
+
 
 
 template <typename Filter, typename Key, typename Val>
@@ -544,9 +591,9 @@ __host__ void test_speed_batched(const std::string& filename, Sizing_Type * Init
 
       cudaDeviceSynchronize();
 
-      speed_delete_kernel<Filter, Key, Val><<<test_filter->get_num_blocks(items_in_this_batch),test_filter->get_block_size(items_in_this_batch)>>>(test_filter, dev_keys, dev_vals, items_in_this_batch, &misses[5], &misses[6]);
+      //speed_delete_kernel<Filter, Key, Val><<<test_filter->get_num_blocks(items_in_this_batch),test_filter->get_block_size(items_in_this_batch)>>>(test_filter, dev_keys, dev_vals, items_in_this_batch, &misses[5], &misses[6]);
 
-      cudaDeviceSynchronize();
+      //cudaDeviceSynchronize();
 
       //test_filter->get_fill();
 
@@ -558,7 +605,32 @@ __host__ void test_speed_batched(const std::string& filename, Sizing_Type * Init
 
    }
 
+
    cudaDeviceSynchronize();
+
+   printf("Fill before: %llu items\n", test_filter->get_fill());
+
+   cudaDeviceSynchronize();
+
+   //deletion tests
+   uint64_t delete_batch = nitems/10;
+
+
+
+   //Key * dev_keys;
+   cudaMalloc((void **)& dev_keys, sizeof(Key)*delete_batch);
+
+   cudaMemcpy(dev_keys, host_keys, delete_batch*sizeof(Key), cudaMemcpyHostToDevice);
+   //speed_delete_single_thread<Filter, Key, Val><<<test_filter->get_num_blocks(delete_batch),test_filter->get_block_size(delete_batch)>>>(test_filter, dev_keys, delete_batch, &misses[5], &misses[6]);
+
+   speed_delete_kernel<Filter, Key, Val><<<test_filter->get_num_blocks(delete_batch),test_filter->get_block_size(delete_batch)>>>(test_filter, dev_keys, delete_batch, &misses[5], &misses[6]);
+
+
+   cudaDeviceSynchronize();
+
+   cudaFree(dev_keys);
+
+   printf("Fill after: %llu items\n", test_filter->get_fill());
 
 
    Filter::free_on_device(test_filter);

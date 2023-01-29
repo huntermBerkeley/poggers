@@ -60,5 +60,10 @@ ConfigureExecutable(four_bitbuddy_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/four_bi
 
 ConfigureExecutable(simple_merged_allocator_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/simple_merged_allocator_tests.cu" "${POGGERS_TESTS_BINARY_DIR}")
 
+ConfigureExecutable(veb_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/veb_tests.cu" "${POGGERS_TESTS_BINARY_DIR}")
+
+
+ConfigureExecutable(one_size_allocator_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/one_size_allocator_tests.cu" "${POGGERS_TESTS_BINARY_DIR}")
+
 
 
