@@ -147,6 +147,22 @@ struct one_size_allocator{
 		internal_tree->insert(offset);
 	}
 
+	__device__ void * get_mem_from_offset(uint64_t offset){
+
+		uint64_t address = (uint64_t) allocation + offset*size_per_alloc;
+
+		return (void *) address;
+
+	}
+
+	__device__ uint64_t get_offset_from_address(void * address){
+
+		uint64_t offset = ((uint64_t) ext_allocation - (uint64_t) allocation)/size_per_alloc;
+
+		return offset;
+
+	}
+
 
 };
 

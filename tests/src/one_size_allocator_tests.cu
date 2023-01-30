@@ -18,6 +18,7 @@
 #include <chrono>
 
 
+#define NUM_ALLOCS  3125000
 
 using namespace poggers::allocators;
 
