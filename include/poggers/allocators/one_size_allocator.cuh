@@ -155,7 +155,7 @@ struct one_size_allocator{
 
 	}
 
-	__device__ uint64_t get_offset_from_address(void * address){
+	__device__ uint64_t get_offset_from_address(void * ext_allocation){
 
 		uint64_t offset = ((uint64_t) ext_allocation - (uint64_t) allocation)/size_per_alloc;
 
