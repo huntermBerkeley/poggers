@@ -163,6 +163,10 @@ struct one_size_allocator{
 
 	}
 
+	static __device__ uint64_t fail(){
+		return veb_tree::fail();
+	}
+
 
 };
 

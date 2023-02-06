@@ -65,5 +65,6 @@ ConfigureExecutable(veb_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/veb_tests.cu" "${
 
 ConfigureExecutable(one_size_allocator_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/one_size_allocator_tests.cu" "${POGGERS_TESTS_BINARY_DIR}")
 
+ConfigureExecutable(offset_slab_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/offset_slab_tests.cu" "${POGGERS_TESTS_BINARY_DIR}")
 
 

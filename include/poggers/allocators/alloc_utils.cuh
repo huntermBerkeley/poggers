@@ -16,6 +16,16 @@
 namespace cg = cooperative_groups;
 
 
+//helper_macro
+//define macros
+#define MAX_VALUE(nbits) ((1ULL << (nbits)) - 1)
+#define BITMASK(nbits)                                    \
+  ((nbits) == 64 ? 0xffffffffffffffff : MAX_VALUE(nbits))
+
+#define SET_BIT_MASK(index) ((1ULL << index))
+
+
+
 //a pointer list managing a set section of device memory
 namespace poggers {
 
