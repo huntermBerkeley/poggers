@@ -80,6 +80,10 @@ struct  shortened_bitmask_key_val_pair {
 			return (key == get_smallKey(ext_key));
 		}
 
+		__host__ __device__ inline bool contains_tombstone(){
+			return (key == get_tombstone());
+		}
+
 		__host__ __device__ inline Val get_val(Key ext_key){
 			return val;
 		}

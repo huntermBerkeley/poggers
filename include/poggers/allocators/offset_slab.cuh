@@ -1181,7 +1181,7 @@ struct pinned_storage {
 
 		int num_storages = poggers::utils::get_num_streaming_multiprocessors(device);
 
-		printf("Booting up %d storages, %llu bytes", num_storages, sizeof(offset_storage_bitmap)*num_storages);
+		printf("Booting up %d storages, %llu bytes\n", num_storages, sizeof(offset_storage_bitmap)*num_storages);
 		cudaMalloc((void **)&dev_storages, sizeof(offset_storage_bitmap)*num_storages);
 
 		init_storage<<<(num_storages-1)/256+1,256>>>(dev_storages, num_storages);
@@ -1507,9 +1507,12 @@ struct smid_pinned_storage {
 
 		} else {
 
-			if (atomicExch((unsigned long long int *)&slab_ptrs[index], (unsigned long long int) new_buffer) != 0ULL){
 
-				printf("Exchanged for an already set buffer\n");
+			uint64_t old = atomicExch((unsigned long long int *)&slab_ptrs[index], (unsigned long long int) new_buffer);
+
+			if (old != 0ULL){
+
+				printf("Exchanged for an already set buffer: %llx exchanged\n", old);
 
 				//weird state but I think this is technically a success
 				return true;
@@ -1528,6 +1531,8 @@ struct smid_pinned_storage {
 	template<typename block_allocator, typename memory_allocator>
 	__device__ void init_with_allocators(block_allocator * balloc, memory_allocator * memalloc){
 
+		//boot myself to clear memory
+		init();
 
 
 		for (int i = 0; i < num_backups+1; i++){
@@ -1546,6 +1551,9 @@ struct smid_pinned_storage {
 				printf("Fail to claim memory for slab\n");
 
 			}
+
+			//don't forget to actually boot memory lol
+			slab->init();
 
 			slab->attach_allocation(offset);
 

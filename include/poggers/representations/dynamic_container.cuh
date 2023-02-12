@@ -77,7 +77,16 @@ struct  internal_dynamic_container {
 		}
 
 		__host__ __device__ inline bool contains(Key ext_key){
+
+			SmallKey tiny_version = get_smallKey(ext_key);
+
 			return storage.contains(get_smallKey(ext_key));
+		}
+
+		__host__ __device__ inline bool contains_tombstone(){
+
+			return storage.contains_tombstone();
+
 		}
 
 		__host__ __device__ inline Val get_val(Key ext_key){
@@ -89,6 +98,11 @@ struct  internal_dynamic_container {
 		}
 
 		__host__ __device__ inline static const SmallKey get_tombstone(){
+
+			// if (threadIdx.x+blockIdx.x*blockDim.x == 2){
+			// printf("Dynamic container sees tombstone as %llx\n", filled_container_type::get_tombstone());
+			// }
+
 			return filled_container_type::get_tombstone();
 		}
 

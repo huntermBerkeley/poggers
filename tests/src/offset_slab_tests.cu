@@ -521,6 +521,102 @@ __host__ void test_unique(uint64_t num_warps){
 
 // }
 
+template <int num_blocks>
+__global__ void pinned_alloc_kernels(smid_pinned_container<num_blocks> * bitarr_containers, pinned_storage * storage_containers, uint64_t num_threads, int allocs_per_thread){
+
+   uint64_t tid = threadIdx.x+blockIdx.x*blockDim.x;
+
+   if (tid >= num_threads) return;
+
+   int allocs_claimed = 0;
+
+   smid_pinned_storage<num_blocks> * my_storage = bitarr_containers->get_pinned_storage();
+
+   offset_storage_bitmap * my_storage_bitmap = storage_containers->get_pinned_storage();
+
+   while (allocs_claimed < allocs_per_thread){
+
+      //printf("Starting round %d\n", allocs_claimed);
+
+      offset_alloc_bitarr * bitarr = my_storage->get_primary();
+
+      if (bitarr == nullptr) continue;
+
+      uint64_t allocation;
+
+      bool alloced = alloc_with_locks(allocation, bitarr, my_storage_bitmap);
+
+      if (!alloced){
+
+
+         int result = my_storage->pivot_primary(bitarr);
+
+         //printf("Spinning on failure %d\n", result);
+
+      } else {
+          allocs_claimed+=1;
+      }
+
+
+
+     
+
+   }
+
+}
+
+
+template <int num_blocks>
+__global__ void team_pinned_alloc_kernels(smid_pinned_container<num_blocks> * bitarr_containers, pinned_storage * storage_containers, uint64_t num_threads, int allocs_per_thread){
+
+   uint64_t tid = threadIdx.x+blockIdx.x*blockDim.x;
+
+   if (tid >= num_threads) return;
+
+   int allocs_claimed = 0;
+
+   smid_pinned_storage<num_blocks> * my_storage = bitarr_containers->get_pinned_storage();
+
+   offset_storage_bitmap * my_storage_bitmap = storage_containers->get_pinned_storage();
+
+
+
+   while (allocs_claimed < allocs_per_thread){
+
+      auto team = cg::coalesced_threads();
+
+      //printf("Starting round %d\n", allocs_claimed);
+
+      offset_alloc_bitarr * bitarr = my_storage->get_primary();
+
+      if (bitarr == nullptr){
+         team.sync();
+
+         continue;
+      }
+
+      uint64_t allocation;
+
+      bool alloced = alloc_with_locks(allocation, bitarr, my_storage_bitmap);
+
+      if (!alloced){
+
+
+         int result = my_storage->pivot_primary(bitarr);
+
+         //printf("Spinning on failure %d\n", result);
+
+      } else {
+          allocs_claimed+=1;
+      }
+
+      team.sync();
+
+     
+
+   }
+
+}
 
 template<int num_blocks>
 __global__ void smid_warp_allocs(smid_pinned_storage<num_blocks> * storage, offset_storage_bitmap * storage_bitmap, int num_warps, int allocs_per_block){
@@ -542,12 +638,14 @@ __global__ void smid_warp_allocs(smid_pinned_storage<num_blocks> * storage, offs
 
    while (allocs_acquired < (num_blocks+1)*allocs_per_block/(32*num_warps)){
 
+
+
       cg::coalesced_group mix = cg::coalesced_threads();
 
 
       offset_alloc_bitarr * bitarr = storage->get_primary();
 
-      if (bitarr == nullptr) break;
+      if (bitarr == nullptr) continue;
 
       bool alloced = alloc_with_locks(allocation, bitarr, storage_bitmap);
 
@@ -645,11 +743,11 @@ __host__ void test_smid_component(int num_warps){
 
 
 template <int num_blocks>
-__host__ void test_pinned_components(uint64_t num_allocs, uint64_t ext_size){
+__host__ void test_pinned_components(uint64_t num_allocs, uint64_t ext_size, uint64_t num_threads, int allocs_per_thread){
 
 
 
-   printf("Starting up allocators - each will serve %llu allocations\n", (num_allocs-1)/4096+1);
+   printf("Starting up test of %llu threads / %d allocs with allocators - each will serve %llu allocations\n", num_threads, allocs_per_thread, (num_allocs-1)/4096+1);
 
    one_size_allocator * block_allocator = one_size_allocator::generate_on_device((num_allocs-1)/4096+1, sizeof(offset_alloc_bitarr), 17);
 
@@ -659,14 +757,39 @@ __host__ void test_pinned_components(uint64_t num_allocs, uint64_t ext_size){
    smid_pinned_container<num_blocks> * malloc_containers = smid_pinned_container<num_blocks>::generate_on_device(block_allocator, mem_allocator);
 
 
+   pinned_storage * storage_containers = pinned_storage::generate_on_device();
+
    cudaDeviceSynchronize();
 
+
+   // (smid_pinned_container<num_blocks> * bitarr_containers, pinned_storage * storage_containers, uint64_t num_threads, int allocs_per_thread){
+
+
+   auto malloc_start = std::chrono::high_resolution_clock::now();
+
+
+   team_pinned_alloc_kernels<num_blocks><<<(num_threads-1)/512+1,512>>>(malloc_containers, storage_containers, num_threads, allocs_per_thread);
+
+   cudaDeviceSynchronize();
+
+   auto malloc_end = std::chrono::high_resolution_clock::now();
+
+   std::chrono::duration<double> elapsed_seconds = malloc_end - malloc_start;
+
+   uint64_t total_allocs = num_threads*allocs_per_thread;
+
+   std::cout << "Malloced " <<  total_allocs << " in " << elapsed_seconds.count() << " seconds, throughput: " << std::fixed << 1.0*total_allocs/elapsed_seconds.count() << std::endl;
+  
 
    smid_pinned_container<num_blocks>::free_on_device(malloc_containers);
 
+   pinned_storage::free_on_device(storage_containers);
+
+   one_size_allocator::free_on_device(block_allocator);
+
+   one_size_allocator::free_on_device(mem_allocator);
+
    cudaDeviceSynchronize();
-
-
 
 
 
@@ -705,7 +828,13 @@ int main(int argc, char** argv) {
    
 
 
-   test_pinned_components<1>(4000000, 1);
+   //test_pinned_components<0>(64000000, 1, 32, 1);
+
+
+   test_pinned_components<15>(64000000, 1, 4*512*108, 10);
+
+   //this causes an actual failure
+   test_pinned_components<63>(64000000, 1, 20*512*108, 10);
    //test_single_warp_bitarr(1);
 
    // test_single_warp_bitarr(2);

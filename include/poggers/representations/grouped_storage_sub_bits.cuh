@@ -165,7 +165,23 @@ struct  grouped_bits_pair {
 			return (key == get_empty());
 		}
 
+
+		__host__ __device__ inline bool contains_tombstone(){
+
+			Key key = retrieve_key_from_storage<Key, Val, storage_type, key_bits, val_bits>(my_storage);
+
+			Key tombstone = get_tombstone() & ((1ULL << key_bits)-1);
+
+			return (key == tombstone);
+
+		}
+
 		__host__ __device__ inline static const Key get_tombstone(){
+
+			// if (threadIdx.x+blockIdx.x*blockDim.x == 2){
+			// 	printf("Grouped sub bits see tombstone as %llx\n", get_empty()-1);
+			// }
+			
 			return get_empty()-1;
 		}
 
@@ -198,6 +214,8 @@ struct  grouped_bits_pair {
 			storage_type ext_storage = join_in_storage<Key, Val, storage_type, key_bits, val_bits>(ext_key, my_val);
 
 			storage_type tombstone_storage = join_in_storage<Key, Val, storage_type, key_bits, val_bits>(get_tombstone(), get_empty_val());
+
+			//printf("Tombstone is %llu, ext_value is %llu,")
 
 
 			if (poggers::helpers::typed_atomic_write(&my_storage, ext_storage, tombstone_storage)){
