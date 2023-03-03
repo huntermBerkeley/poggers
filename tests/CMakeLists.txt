@@ -24,6 +24,8 @@ ConfigureExecutable(bucket_speed_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/bucket_s
 
 ConfigureExecutable(test_cg_variations "${CMAKE_CURRENT_SOURCE_DIR}/src/test_cg_variations.cu" "${POGGERS_TESTS_BINARY_DIR}")
 
+ConfigureExecutable(test_mhm_tcf "${CMAKE_CURRENT_SOURCE_DIR}/src/test_mhm_tcf.cu" "${POGGERS_TESTS_BINARY_DIR}")
+
 ConfigureExecutable(aligned_stack_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/aligned_stack_tests.cu" "${POGGERS_TESTS_BINARY_DIR}")
 
 ConfigureExecutable(sub_allocator_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/sub_allocator_tests.cu" "${POGGERS_TESTS_BINARY_DIR}")
@@ -70,4 +72,4 @@ ConfigureExecutable(offset_slab_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/offset_sl
 
 ConfigureExecutable(delete_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/delete_tests.cu" "${POGGERS_TESTS_BINARY_DIR}")
 
-
+ConfigureExecutable(slab_one_size_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/slab_one_size_tests.cu" "${POGGERS_TESTS_BINARY_DIR}")

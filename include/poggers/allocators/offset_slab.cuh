@@ -349,6 +349,10 @@ struct offset_alloc_bitarr{
 
 		internal_offset = ext_offset;
 
+		if ((internal_offset % 4096) != 0){
+			printf("Logical bug in bucket reasoning! bits up to 4096 not actually free\n");
+		}
+
 	}
 
 	
@@ -360,9 +364,9 @@ struct offset_alloc_bitarr{
 
 
 		//safety check - cast into my setup
-		int upper_bit = (offset-internal_offset)/64;
+		int upper_bit = (offset-(internal_offset & ~1ULL ) )/64;
 
-		int lower_bit = (offset-internal_offset) % 64; 
+		int lower_bit = (offset-(internal_offset & ~1ULL ))% 64; 
 
 		if (upper_bit > 63 || lower_bit > 63){
 			printf("Free bug - upper %d lower %d\n", upper_bit, lower_bit);
@@ -447,12 +451,13 @@ struct offset_alloc_bitarr{
 
 	//helper functions
 
+	//frees must succeed - precondition - fail on double free but print error.
 	__device__ bool free_allocation_v2(uint64_t offset){
 
 
-		int upper_bit = (offset-internal_offset)/64;
+		int upper_bit = (offset-(internal_offset & ~1ULL))/64;
 
-		int lower_bit = (offset-internal_offset) % 64; 
+		int lower_bit = (offset-(internal_offset & ~1ULL)) % 64; 
 
 		#if SLAB_PRINT_DEBUG
 		if (upper_bit > 63 || lower_bit > 63){
@@ -483,7 +488,9 @@ struct offset_alloc_bitarr{
 			}
 			#endif
 
-			if (manager_bits.set_index(upper_bit) & SET_BIT_MASK(upper_bit)){
+			uint64_t old_bits = manager_bits.set_index(upper_bit);
+
+			if (old_bits & SET_BIT_MASK(upper_bit)){
 
 				#if SLAB_PRINT_DEBUG
 				printf("failed to reclaim bit %d\n", upper_bit);
@@ -496,7 +503,7 @@ struct offset_alloc_bitarr{
 				#if SLAB_PRINT_DEBUG
 				printf("Returned %d\n", upper_bit);
 				#endif
-				return true;
+				return __popcll(old_bits) == 63;
 
 			}
 
@@ -583,7 +590,7 @@ struct offset_alloc_bitarr{
 
 		remainder = bits;
 
-		offset = internal_offset+upper_index*64+my_index;
+		offset = (internal_offset & ~1ULL)+upper_index*64+my_index;
 
 		//this doesn't occur
 		if (remainder != 0ULL & my_index == -1){
@@ -597,6 +604,30 @@ struct offset_alloc_bitarr{
 
 
 
+
+	}
+
+
+
+	__device__ void mark_pinned(){
+
+		atomicOr((unsigned long long int *)&remainder, 1ULL);
+
+	}
+
+
+	__device__ void mark_unpinned(){
+
+		atomicAnd((unsigned long long int *)&remainder, ~1ULL);
+	}
+
+
+	//returns 0 if unpinned
+	//this will set the pin - thats bad
+	//do global load
+	__device__ bool atomic_check_unpinned(){
+
+		return ((poggers::utils::ldca(&remainder) & 1ULL) == 0);
 
 	}
 
@@ -1393,7 +1424,7 @@ struct smid_pinned_storage {
 		slab_markers = 0ULL;
 
 
-		for (int i = 0; i < num_backups; i++){
+		for (int i = 0; i < num_backups+1; i++){
 
 			slab_ptrs[i] = nullptr;
 
@@ -1408,6 +1439,7 @@ struct smid_pinned_storage {
 	__device__ int pivot_primary(offset_alloc_bitarr * old_primary){
 
 
+		old_primary->mark_unpinned();
 		//printf("Thread %d entering pivot\n", threadIdx.x);
 
 		if (!(slab_markers.unset_index(0) & SET_BIT_MASK(0))){
@@ -1557,6 +1589,8 @@ struct smid_pinned_storage {
 
 			slab->attach_allocation(offset);
 
+			slab->mark_pinned();
+
 			attach_new_buffer(i, slab);
 
 			
@@ -1564,6 +1598,47 @@ struct smid_pinned_storage {
 
 
 	}		
+
+		template<typename block_allocator>
+	__device__ void init_with_allocators_memory(block_allocator * balloc, uint64_t ext_offset){
+
+		//boot myself to clear memory
+		init();
+
+
+		for (int i = 0; i < num_backups+1; i++){
+
+			uint64_t slab_offset = balloc->get_offset();
+
+			offset_alloc_bitarr * slab = (offset_alloc_bitarr *) balloc->get_mem_from_offset(slab_offset);
+
+			if (slab == nullptr){
+				printf("Failed to load slab from allocator\n");
+				return;
+			}
+
+			uint64_t offset = slab_offset*ext_offset; 
+
+			// if (offset == memory_allocator::fail()){
+			// 	balloc->free(slab);
+			// 	printf("Fail to claim memory for slab\n");
+
+			// }
+
+			//don't forget to actually boot memory lol
+			slab->init();
+
+			slab->attach_allocation(offset);
+
+			slab->mark_pinned();
+
+			attach_new_buffer(i, slab);
+
+			
+		}
+
+
+	}
 
 
 };
@@ -1578,6 +1653,17 @@ __global__ void smid_pinned_block_init_storage(block_allocator * balloc, memory_
 	if (tid >= num_storages) return;
 
 	storages[tid].init_with_allocators(balloc, memalloc);
+
+}
+
+template <int num_blocks, typename block_allocator>
+__global__ void smid_pinned_block_init_storage_char(block_allocator * balloc, uint64_t offset, smid_pinned_storage<num_blocks> * storages, int num_storages){
+
+	uint64_t tid = threadIdx.x+blockIdx.x*blockDim.x;
+
+	if (tid >= num_storages) return;
+
+	storages[tid].init_with_allocators_memory(balloc, offset);
 
 }
 
@@ -1635,6 +1721,50 @@ struct smid_pinned_container {
 	static __host__ my_type * generate_on_device(block_allocator * balloc, memory_allocator * memalloc){
 
 		return my_type::generate_on_device(0, balloc, memalloc);
+	}
+
+
+	template <typename block_allocator>
+	static __host__ my_type * generate_on_device(int device, block_allocator * balloc, uint64_t ext_offset){
+
+		my_type * host_storage;
+
+		cudaMallocHost((void **)&host_storage, sizeof(my_type));
+
+		pinned_type * dev_storages;
+
+
+		int num_storages = poggers::utils::get_num_streaming_multiprocessors(device);
+
+		printf("Booting up %d storages, %llu bytes\n", num_storages, sizeof(pinned_type)*num_storages);
+		cudaMalloc((void **)&dev_storages, sizeof(pinned_type)*num_storages);
+
+		smid_pinned_block_init_storage_char<num_blocks, block_allocator><<<(num_storages-1)/256+1,256>>>(balloc, ext_offset, dev_storages, num_storages);
+
+		cudaDeviceSynchronize();
+
+		host_storage->storages = dev_storages;
+
+		my_type * dev_ptr;
+
+		cudaMalloc((void **)&dev_ptr, sizeof(my_type));
+
+		cudaMemcpy(dev_ptr, host_storage, sizeof(my_type), cudaMemcpyHostToDevice);
+
+		cudaDeviceSynchronize();
+
+		cudaFreeHost(host_storage);
+
+		return dev_ptr;
+
+
+	}
+
+	//if you don't specify we go on device 0.
+	template <typename block_allocator>
+	static __host__ my_type * generate_on_device(block_allocator * balloc, uint64_t ext_offset){
+
+		return my_type::generate_on_device(0, balloc, ext_offset);
 	}
 
 
