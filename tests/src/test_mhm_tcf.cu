@@ -1108,13 +1108,13 @@ int main(int argc, char** argv) {
 
    test_tcf_speed<TCF, uint8_t>("tcf_mhm_20", 20, 20);
 
-   test_tcf_speed<TCF, uint8_t>("tcf_mhm_20", 22, 20);
+   test_tcf_speed<TCF, uint8_t>("tcf_mhm_22", 22, 20);
 
-   test_tcf_speed<TCF, uint8_t>("tcf_mhm_20", 24, 20);
+   test_tcf_speed<TCF, uint8_t>("tcf_mhm_24", 24, 20);
 
-   test_tcf_speed<TCF, uint8_t>("tcf_mhm_20", 26, 20);
+   test_tcf_speed<TCF, uint8_t>("tcf_mhm_26", 26, 20);
 
-   test_tcf_speed<TCF, uint8_t>("tcf_mhm_20", 28, 20);
+   test_tcf_speed<TCF, uint8_t>("tcf_mhm_28", 28, 20);
 
    // test_eight_8();
 
