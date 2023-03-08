@@ -360,94 +360,94 @@ struct offset_alloc_bitarr{
 	//TODO: templatize over size in bytes
 
 	//bug in here releasing small allocs
-	__device__ bool free_allocation(uint64_t offset){
+	// __device__ bool free_allocation(uint64_t offset){
 
 
-		//safety check - cast into my setup
-		int upper_bit = (offset-(internal_offset & ~1ULL ) )/64;
+	// 	//safety check - cast into my setup
+	// 	int upper_bit = (offset-(internal_offset & ~1ULL ) )/64;
 
-		int lower_bit = (offset-(internal_offset & ~1ULL ))% 64; 
+	// 	int lower_bit = (offset-(internal_offset & ~1ULL ))% 64; 
 
-		if (upper_bit > 63 || lower_bit > 63){
-			printf("Free bug - upper %d lower %d\n", upper_bit, lower_bit);
-		}
-
-
-		//collate thread teams together
-		while (true){
-
-			cg::coalesced_group active_threads = cg::coalesced_threads();
-
-			//only threads that match with the leader may progress.
-
-			int team_upper_bit = active_threads.shfl(upper_bit, 0);
-
-			if (team_upper_bit == upper_bit) break;
-
-			
-
-		}
-
-		//starting team now shares the same upper bit
-		cg::coalesced_group starting_team = cg::coalesced_threads();
+	// 	if (upper_bit > 63 || lower_bit > 63){
+	// 		printf("Free bug - upper %d lower %d\n", upper_bit, lower_bit);
+	// 	}
 
 
-		uint64_t my_mask = (1ULL << lower_bit);
+	// 	//collate thread teams together
+	// 	while (true){
 
-		uint64_t scanned_mask = cg::inclusive_scan(starting_team, my_mask, cg::bit_or<uint64_t>());
+	// 		cg::coalesced_group active_threads = cg::coalesced_threads();
 
-		if (starting_team.thread_rank() == starting_team.size()-1){
+	// 		//only threads that match with the leader may progress.
+
+	// 		int team_upper_bit = active_threads.shfl(upper_bit, 0);
+
+	// 		if (team_upper_bit == upper_bit) break;
 
 			
-			uint64_t old_bits = alloc_bits[upper_bit].set_OR_mask(scanned_mask);
 
-			#if SLAB_PRINT_DEBUG
-			if ((old_bits & scanned_mask) != 0ULL){
-				printf("%d Bug in overwriting bits, %d --  %llx overwritten\n", threadIdx.x/32, upper_bit, old_bits & scanned_mask);
-			}
-			#endif
+	// 	}
 
-			if ((old_bits | scanned_mask) == (~0ULL)){
-
-				uint64_t old = atomicExch((unsigned long long int *)&alloc_bits[upper_bit], ~0ULL);
-
-				#if SLAB_PRINT_DEBUG
-				if (old != ~0ULL){
-					printf("%d Free bug with %d - old is %llx\n", threadIdx.x/32, upper_bit, old);
-				}
-				#endif
-
-				__threadfence();
-
-				if (manager_bits.set_index(upper_bit) & SET_BIT_MASK(upper_bit)){
-
-					#if SLAB_PRINT_DEBUG
-					printf("failed to reclaim bit %d\n", upper_bit);
-					#endif
-					return false;				
-
-				} else {
+	// 	//starting team now shares the same upper bit
+	// 	cg::coalesced_group starting_team = cg::coalesced_threads();
 
 
-					#if SLAB_PRINT_DEBUG
-					printf("Returned %d\n", upper_bit);
-					#endif
+	// 	uint64_t my_mask = (1ULL << lower_bit);
 
-					return true;
+	// 	uint64_t scanned_mask = cg::inclusive_scan(starting_team, my_mask, cg::bit_or<uint64_t>());
 
-				}
+	// 	if (starting_team.thread_rank() == starting_team.size()-1){
+
+			
+	// 		uint64_t old_bits = alloc_bits[upper_bit].set_OR_mask(scanned_mask);
+
+	// 		#if SLAB_PRINT_DEBUG
+	// 		if ((old_bits & scanned_mask) != 0ULL){
+	// 			printf("%d Bug in overwriting bits, %d --  %llx overwritten\n", threadIdx.x/32, upper_bit, old_bits & scanned_mask);
+	// 		}
+	// 		#endif
+
+	// 		if ((old_bits | scanned_mask) == (~0ULL)){
+
+	// 			uint64_t old = atomicExch((unsigned long long int *)&alloc_bits[upper_bit], ~0ULL);
+
+	// 			#if SLAB_PRINT_DEBUG
+	// 			if (old != ~0ULL){
+	// 				printf("%d Free bug with %d - old is %llx\n", threadIdx.x/32, upper_bit, old);
+	// 			}
+	// 			#endif
+
+	// 			__threadfence();
+
+	// 			if (manager_bits.set_index(upper_bit) & SET_BIT_MASK(upper_bit)){
+
+	// 				#if SLAB_PRINT_DEBUG
+	// 				printf("failed to reclaim bit %d\n", upper_bit);
+	// 				#endif
+	// 				return false;				
+
+	// 			} else {
+
+
+	// 				#if SLAB_PRINT_DEBUG
+	// 				printf("Returned %d\n", upper_bit);
+	// 				#endif
+
+	// 				return true;
+
+	// 			}
 
 				
 
 
-			}
+	// 		}
 
-		}
+	// 	}
 
-		return true;
+	// 	return true;
 
 
-	}
+	// }
 
 	//helper functions
 
@@ -459,11 +459,11 @@ struct offset_alloc_bitarr{
 
 		int lower_bit = (offset-(internal_offset & ~1ULL)) % 64; 
 
-		#if SLAB_PRINT_DEBUG
+
 		if (upper_bit > 63 || lower_bit > 63){
 			printf("Free bug - upper %d lower %d\n", upper_bit, lower_bit);
 		}
-		#endif
+
 
 
 		//uint64_t my_mask = (1ULL << lower_bit);
@@ -511,6 +511,16 @@ struct offset_alloc_bitarr{
 		}
 
 
+		return false;
+
+
+
+	}
+
+	__device__ bool is_full_atomic(){
+
+
+		return __popcll(atomicOr((unsigned long long int *)&manager_bits, 0ULL)) == 64;
 
 	}
 
@@ -611,23 +621,49 @@ struct offset_alloc_bitarr{
 
 	__device__ void mark_pinned(){
 
-		atomicOr((unsigned long long int *)&remainder, 1ULL);
+		atomicOr((unsigned long long int *)&internal_offset, 1ULL);
+
+	}
+
+	__device__ uint64_t get_offset(){
+		return (internal_offset & ~1ULL);
+	}
+
+	__device__ bool belongs_to_block(uint64_t offset){
+
+
+		//printf("Offset: %llu, internal_offset: %llu\n", offset/4096, internal_offset & ~1ULL);
+
+		return (offset)/4096 == (internal_offset & ~1ULL)/4096;
 
 	}
 
 
 	__device__ void mark_unpinned(){
 
-		atomicAnd((unsigned long long int *)&remainder, ~1ULL);
+		atomicAnd((unsigned long long int *)&internal_offset, ~1ULL);
 	}
 
 
-	//returns 0 if unpinned
-	//this will set the pin - thats bad
-	//do global load
+	//returns true when unpinned
 	__device__ bool atomic_check_unpinned(){
 
-		return ((poggers::utils::ldca(&remainder) & 1ULL) == 0);
+		return ((poggers::utils::ldca(&internal_offset) & 1ULL) == 0);
+
+	}
+
+	__device__ uint64_t get_active_bits(){
+
+		uint64_t counter = 0;
+
+
+		for (int i=0; i< 64; i++){
+			counter += __popcll(alloc_bits[i]);
+		}
+
+
+		return counter;
+
 
 	}
 
@@ -1115,6 +1151,8 @@ __device__ bool alloc_with_locks(uint64_t & allocation, offset_alloc_bitarr * ma
 	bool ballot = (block_storage->bit_malloc_v3(in_lock, allocation, remainder));
 
 
+
+
 	#if SLAB_PRINT_DEBUG
 	if (ballot && (allocation == ~0ULL)){
 		printf("Bug in first malloc, remainder is %llu\n", remainder);
@@ -1157,7 +1195,25 @@ __device__ bool alloc_with_locks(uint64_t & allocation, offset_alloc_bitarr * ma
 
 
 
-		if (remaining.thread_rank() == 0){
+	if (bit_malloc_result){
+
+		if (!manager->belongs_to_block(allocation)){
+			printf("Primary Offset bug.\n");
+		}
+
+		//uint64_t debug_alloc_bitarr_offset = allocation/4096;
+
+		// offset_alloc_bitarr * alt_bitarr = (offset_alloc_bitarr *) block_allocator->get_mem_from_offset(debug_alloc_bitarr_offset);
+
+		// if (alt_bitarr != bitarr){
+		// 	printf("Alt bitarr bug\n");
+		// }
+
+	}
+
+
+
+	if (remaining.thread_rank() == 0){
 	      
 		  //only attempt to attach if not empty.
 	      if (__popcll(remainder) > 0  && bit_malloc_result){
@@ -1439,12 +1495,24 @@ struct smid_pinned_storage {
 	__device__ int pivot_primary(offset_alloc_bitarr * old_primary){
 
 
-		old_primary->mark_unpinned();
 		//printf("Thread %d entering pivot\n", threadIdx.x);
 
 		if (!(slab_markers.unset_index(0) & SET_BIT_MASK(0))){
 			return -1;
 		}
+
+		old_primary->mark_unpinned();
+
+		if (!old_primary->atomic_check_unpinned()){
+			printf("Internal pivot unpin bug\n");
+		}
+
+		//not happening - so the blocks must be full at some point...
+		if (old_primary->is_full_atomic()){
+			printf("behavior bug in pivot primary\n");
+		}
+
+		__threadfence();
 
 		while (true){
 
@@ -1495,9 +1563,9 @@ struct smid_pinned_storage {
 
 		offset_alloc_bitarr * ret = slab_ptrs[0];
 
-		if (ret == nullptr || !(slab_markers.bits & SET_BIT_MASK(0))){
-			return get_non_primary();
-		}
+		// if (ret == nullptr || !(slab_markers.bits & SET_BIT_MASK(0))){
+		// 	return get_non_primary();
+		// }
 
 
 		if ((uint64_t) ret == 0x1){
@@ -1530,32 +1598,56 @@ struct smid_pinned_storage {
 	}
 
 
+	// __device__ bool attach_new_buffer(int index, offset_alloc_bitarr * new_buffer){
+
+	// 	if (slab_markers.set_index(index) & SET_BIT_MASK(index)){
+
+	// 		printf("Error attaching: index %d already set\n", index);
+	// 		return false;
+
+	// 	} else {
+
+
+	// 		uint64_t old = atomicExch((unsigned long long int *)&slab_ptrs[index], (unsigned long long int) new_buffer);
+
+	// 		if (old != 0ULL){
+
+	// 			printf("%d Exchanged for an already set buffer: %llx exchanged\n", index, old);
+
+	// 			//weird state but I think this is technically a success
+	// 			return true;
+
+	// 		}
+
+	// 		//printf("Buffer attached to index %d\n", index);
+	// 		return true;
+
+
+	// 	}
+
+	// }
+
+
 	__device__ bool attach_new_buffer(int index, offset_alloc_bitarr * new_buffer){
+
+		uint64_t old = atomicCAS((unsigned long long int *)&slab_ptrs[index], 0ULL, (unsigned long long int) new_buffer);
+
+		if (old != 0ULL){
+
+			printf("%d Exchanged for an already set buffer: %llx exchanged\n", index, old);
+
+			return false;
+
+		}
 
 		if (slab_markers.set_index(index) & SET_BIT_MASK(index)){
 
 			printf("Error attaching: index %d already set\n", index);
+
 			return false;
-
-		} else {
-
-
-			uint64_t old = atomicExch((unsigned long long int *)&slab_ptrs[index], (unsigned long long int) new_buffer);
-
-			if (old != 0ULL){
-
-				printf("Exchanged for an already set buffer: %llx exchanged\n", old);
-
-				//weird state but I think this is technically a success
-				return true;
-
-			}
-
-			//printf("Buffer attached to index %d\n", index);
-			return true;
-
-
 		}
+
+		return true;
 
 	}
 

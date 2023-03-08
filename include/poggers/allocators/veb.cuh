@@ -83,6 +83,24 @@ __global__ void init_bits(uint64_t * bits, uint64_t items_in_universe){
 
 }
 
+
+template <typename veb_tree_kernel_type>
+__global__ void veb_report_fill_kernel(veb_tree_kernel_type * tree, uint64_t num_threads, uint64_t * fill_count){
+
+	uint64_t tid = threadIdx.x+blockIdx.x*blockDim.x;
+
+	if (tid >= num_threads) return;
+
+
+	uint64_t my_fill = __popcll(tree->layers[tree->num_layers-1]->bits[tid]);
+
+	atomicAdd((unsigned long long int *)fill_count, (unsigned long long int) my_fill);
+
+
+}
+
+
+
 //a layer is a bitvector used for ops
 //internally, they are just uint64_t's as those are the fastest to work with
 
@@ -248,7 +266,9 @@ struct veb_tree {
 	int num_layers;
 	layer ** layers;
 
+	//don't think this calculation is correct
 	__host__ static veb_tree * generate_on_device(uint64_t universe, uint64_t ext_seed){
+
 
 
 		veb_tree * host_tree;
@@ -256,11 +276,9 @@ struct veb_tree {
 		cudaMallocHost((void **)&host_tree, sizeof(veb_tree));
 
 
-		int max_height = 64 - __builtin_clzll(universe) -1;
+		int max_height = 64 - __builtin_clzll(universe);
 
-		assert(max_height != -1);
-		assert(__builtin_popcountll(universe) == 1);
-
+		assert(max_height >= 1);
 		//round up but always assume
 		int ext_num_layers = (max_height-1)/6+1;
 
@@ -505,7 +523,7 @@ struct veb_tree {
 
 	__device__ uint64_t lock_offset(uint64_t start){
 
-		//temporarily clipped for devbugging
+		//temporarily clipped for debugging
 		if (query(start) && remove(start)){ return start; }
 
 		//return veb_tree::fail();
@@ -564,6 +582,71 @@ struct veb_tree {
 		return lock_offset(0);
 
 
+
+	}
+
+	
+	__device__ uint64_t get_largest_allocation(){
+
+		return total_universe;
+
+	}
+
+	__host__ uint64_t host_get_universe(){
+
+		veb_tree * host_version;
+
+		cudaMallocHost((void **)&host_version, sizeof(veb_tree));
+
+		cudaMemcpy(host_version, this, sizeof(veb_tree), cudaMemcpyDeviceToHost);
+
+		cudaDeviceSynchronize();
+
+		uint64_t ret_value = host_version->total_universe;
+
+		cudaFreeHost(host_version);
+
+		return ret_value;
+
+	}
+
+
+	__host__ uint64_t report_fill(){
+
+
+		uint64_t * fill_count;
+
+		cudaMallocManaged((void **)&fill_count, sizeof(uint64_t));
+
+		cudaDeviceSynchronize();
+
+		fill_count[0] = 0;
+
+		cudaDeviceSynchronize();
+
+		uint64_t max_value = report_max();
+
+		uint64_t num_threads = max_value/64;
+
+		veb_report_fill_kernel<veb_tree><<<(num_threads-1)/512+1, 512>>>(this, num_threads, fill_count);
+
+		cudaDeviceSynchronize();
+
+		uint64_t return_val = fill_count[0];
+
+		cudaFree(fill_count);
+
+		return return_val;
+
+
+	}
+
+
+	__host__ uint64_t report_max(){
+
+
+		//return 1;
+		return host_get_universe();
 
 	}
 

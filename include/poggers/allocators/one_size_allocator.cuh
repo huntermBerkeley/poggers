@@ -124,6 +124,13 @@ struct one_size_allocator{
 	}
 
 
+	static __device__ uint64_t fail(){
+
+		return veb_tree::fail();
+
+	}
+
+
 	__device__ void free(void * ext_allocation){
 
 		//internal_tree->insert((uint64_t) ext_allocation);
@@ -139,6 +146,10 @@ struct one_size_allocator{
 
 		return internal_tree->malloc();
 
+	}
+
+	__device__ uint64_t get_largest_allocation(){
+		return internal_tree->get_largest_allocation();
 	}
 
 
@@ -163,8 +174,48 @@ struct one_size_allocator{
 
 	}
 
-	static __device__ uint64_t fail(){
-		return veb_tree::fail();
+
+
+	__device__ uint64_t query(uint64_t offset){
+		return internal_tree->query(offset);
+	}
+
+	// __host__ veb_tree * get_host_veb_tree(){
+
+	// 	veb_tree * host_internal_tree;
+
+	// 	cudaMallocHost((void **)&host_internal_tree, sizeof(veb_tree));
+
+	// 	cudaMemcpy(host_internal_tree, internal_tree, sizeof(veb_tree), cudaMemcpyDeviceToHost);
+
+	// 	cudaDeviceSynchronize();
+
+	// 	return host_internal_tree;
+
+	// }
+
+
+	//requires one size allocator to be a host version.
+	__host__ uint64_t report_fill(){
+
+
+		//return 1;
+
+
+		//veb_tree * host_internal_tree = get_host_veb_tree();
+
+		uint64_t internal_fill = internal_tree->report_fill();
+
+		//cudaFreeHost(host_internal_tree);
+
+		return internal_fill;
+
+	}
+
+	__host__ uint64_t report_max(){
+
+		//return 1;
+		return internal_tree->report_max();
 	}
 
 
