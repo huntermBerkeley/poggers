@@ -59,6 +59,8 @@ public:
 	using probing_scheme_type = Probing_Scheme<Key,Partition_Size, Hasher, Max_Probes>;
 	using my_type = power_of_n_insert_shortcut_scheme<Key, Val, Partition_Size, Bucket_Size, Internal_Rep, Max_Probes, Hasher, Probing_Scheme>;
 
+	using rep_type = Internal_Rep<Key, Val>;
+
 
 	//using partition_size = Hasher1::Partition_Size;
 
@@ -338,7 +340,7 @@ public:
 
 		int min_fill = Bucket_Size;
 
-		for (uint64_t insert_slot = insert_probing_scheme.begin(key); insert_slot != insert_probing_scheme.end(); insert_slot = insert_probing_scheme.next()){
+		for (uint64_t insert_slot = insert_probing_scheme.begin(key); insert_slot != insert_probing_scheme.end(); insert_slot = insert_probing_scheme.next(rep_type::tag(key))){
 
        		insert_slot = insert_slot % num_buckets;
 
@@ -441,7 +443,7 @@ public:
 
 		probing_scheme_type insert_probing_scheme(seed);
 
-		for (uint64_t insert_slot = insert_probing_scheme.begin(key); insert_slot != insert_probing_scheme.end(); insert_slot = insert_probing_scheme.next()){
+		for (uint64_t insert_slot = insert_probing_scheme.begin(key); insert_slot != insert_probing_scheme.end(); insert_slot = insert_probing_scheme.next(rep_type::tag(key))){
 
        			
        		insert_slot = insert_slot % num_buckets;
@@ -474,7 +476,7 @@ public:
 
 		probing_scheme_type insert_probing_scheme(seed);
 
-		for (uint64_t insert_slot = insert_probing_scheme.begin(key); insert_slot != insert_probing_scheme.end(); insert_slot = insert_probing_scheme.next()){
+		for (uint64_t insert_slot = insert_probing_scheme.begin(key); insert_slot != insert_probing_scheme.end(); insert_slot = insert_probing_scheme.next(rep_type::tag(key))){
 
        			
        		insert_slot = insert_slot % num_buckets;

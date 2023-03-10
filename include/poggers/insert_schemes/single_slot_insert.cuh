@@ -61,6 +61,8 @@ public:
 	using probing_scheme_type = Probing_Scheme<Key,Partition_Size, Hasher, Max_Probes>;
 	using my_type = single_slot_insert<Key, Val, Partition_Size, Bucket_Size, Internal_Rep, Max_Probes, Hasher, Probing_Scheme>;
 
+	using rep_type = Internal_Rep<Key, Val>;
+
 
 	//using partition_size = Hasher1::Partition_Size;
 
@@ -128,7 +130,7 @@ public:
 
 		probing_scheme_type insert_probing_scheme(seed);
 
-		for (uint64_t insert_slot = insert_probing_scheme.begin(key); insert_slot != insert_probing_scheme.end(); insert_slot = insert_probing_scheme.next()){
+		for (uint64_t insert_slot = insert_probing_scheme.begin(key); insert_slot != insert_probing_scheme.end(); insert_slot = insert_probing_scheme.next(rep_type::tag(key))){
 
 			if (insert_tile.thread_rank() == 0){
        		insert_slot = insert_slot % nslots;
@@ -171,7 +173,7 @@ public:
 
 		probing_scheme_type insert_probing_scheme(seed);
 
-		for (uint64_t insert_slot = insert_probing_scheme.begin(key); insert_slot != insert_probing_scheme.end(); insert_slot = insert_probing_scheme.next()){
+		for (uint64_t insert_slot = insert_probing_scheme.begin(key); insert_slot != insert_probing_scheme.end(); insert_slot = insert_probing_scheme.next(rep_type::tag(key))){
 
 			if (insert_tile.thread_rank() == 0){
        		insert_slot = insert_slot % nslots;

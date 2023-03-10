@@ -32,7 +32,7 @@ struct  internal_dynamic_container {
 
 		filled_container_type storage;
 
-		__host__ __device__ inline const SmallKey get_smallKey(Key ext_key){ 
+		static __host__ __device__ inline const SmallKey get_smallKey(Key ext_key){ 
 
 
 			SmallKey smaller_version = (SmallKey) ext_key; 
@@ -49,6 +49,9 @@ struct  internal_dynamic_container {
 
 		}
 
+		static __device__ inline Key tag(Key ext_key){
+			return get_smallKey(ext_key);
+		}
 
 		__host__ __device__ static const SmallKey get_empty(){ return filled_container_type::get_empty(); }
 
@@ -112,6 +115,19 @@ struct  internal_dynamic_container {
 
 		}
 
+		__device__ inline bool atomic_insert(Key const ext_key, Val const ext_val){
+
+			if (is_empty()){
+				return atomic_swap(ext_key, ext_val);
+			} else {
+				return atomic_swap_tombstone(ext_key, ext_val);
+			}
+
+		}
+
+		__device__ inline bool is_empty_or_tombstone(){
+			return is_empty() || contains_tombstone();
+		}
 		
 
 };

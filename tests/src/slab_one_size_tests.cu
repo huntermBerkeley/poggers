@@ -17,6 +17,8 @@
 #include <assert.h>
 #include <chrono>
 
+using namespace std::chrono;
+
 
 #include <cooperative_groups.h>
 
@@ -28,7 +30,9 @@ namespace cg = cooperative_groups;
 using namespace poggers::allocators;
 
 
-
+double elapsed(high_resolution_clock::time_point t1, high_resolution_clock::time_point t2) {
+   return (duration_cast<duration<double> >(t2 - t1)).count();
+}
 
 
 
@@ -77,7 +81,7 @@ __global__ void allocate_into_array(one_size_slab_allocator<num_blocks> * alloca
 
       uint64_t offset = allocator->get_offset_from_ptr(allocation);
 
-      if (offset >= num_mallocs+15000000){
+      if (offset >= allocator->get_largest_allocation_offset()){
 
          printf("allocation bug %llx > %llx\n", offset, num_mallocs+15000000);
       }
@@ -259,6 +263,8 @@ __host__ void test_num_malloc_frees_bitarr(uint64_t num_mallocs, int num_rounds)
 
       cudaDeviceSynchronize();
 
+
+
       allocate_into_array_bits<blocks><<<(num_mallocs -1)/512+1, 512>>>(test_alloc, array, num_mallocs, misses);
 
       cudaDeviceSynchronize();
@@ -310,6 +316,8 @@ __host__ void test_num_malloc_frees(uint64_t num_mallocs, int num_rounds){
    //pocket math says 500,000 is sufficient for an A100
    //times 16 jk gonna do 10,000,000 to be safe
 
+   high_resolution_clock::time_point malloc_start, malloc_end, free_start, free_end;
+
    printf("Starting test with %llu threads and %d rounds\n", num_mallocs, num_rounds);
 
    one_size_slab_allocator<num_blocks> * test_alloc = one_size_slab_allocator<num_blocks>::generate_on_device(15000000+num_mallocs, 1);
@@ -340,9 +348,13 @@ __host__ void test_num_malloc_frees(uint64_t num_mallocs, int num_rounds){
 
       cudaDeviceSynchronize();
 
+      malloc_start = high_resolution_clock::now();
+
       allocate_into_array<num_blocks><<<(num_mallocs -1)/512+1, 512>>>(test_alloc, array, num_mallocs, misses);
 
       cudaDeviceSynchronize();
+
+      malloc_end = high_resolution_clock::now();
 
       uint64_t half_fill = test_alloc->report_fill();
 
@@ -350,15 +362,21 @@ __host__ void test_num_malloc_frees(uint64_t num_mallocs, int num_rounds){
 
       printf("Halfway through iteration %d: %llu/%llu %f \n", i, half_fill, half_max, 1.0*half_fill/half_max);
 
+      cudaDeviceSynchronize();
+
+      free_start = high_resolution_clock::now();
 
       free_from_array<num_blocks><<<(num_mallocs -1)/512+1, 512>>>(test_alloc, array, num_mallocs);
 
       cudaDeviceSynchronize();
 
+      free_end = high_resolution_clock::now();
+
       uint64_t fill = test_alloc->report_fill();
       uint64_t max = test_alloc->report_max();
 
-      printf("Done with cycle %d, %llu/%llu: %f misses. %llu/%llu free\n", i, misses[0], num_mallocs, 1.0*misses[0]/num_mallocs, fill, max);
+      printf("Done with cycle %d. %llu/%llu: %f misses. %llu/%llu free\n", i, misses[0], num_mallocs, 1.0*misses[0]/num_mallocs, fill, max);
+      std::cout << "Cycle took " << elapsed(malloc_start, malloc_end) << " for malloc and " << elapsed(free_start, free_end) << " for frees.\n";
 
 
    }
@@ -443,13 +461,13 @@ int main(int argc, char** argv) {
 
    //test_num_malloc_frees(10000, 10);
 
-   test_num_malloc_frees<4>(100000000, 1000);
+   test_num_malloc_frees<4>(1000000000, 10);
 
    //test_num_malloc_frees(1000000, 10);
 
    //test_num_malloc_frees(100000000, 10);
 
-   test_num_malloc_frees_bitarr<4>(100000000, 10);
+   //test_num_malloc_frees_bitarr<4>(100000000, 10);
 
 
 

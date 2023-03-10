@@ -1,5 +1,5 @@
-#ifndef P2_HASHING_PROBING 
-#define P2_HASHING_PROBING
+#ifndef XOR_P2_HASHING_PROBING 
+#define XOR_P2_HASHING_PROBING
 
 
 #include <cuda.h>
@@ -26,7 +26,7 @@ namespace probing_schemes {
 //probing schemes map keys to buckets/slots in some predefined pattern
 template <typename Key, std::size_t Partition_Size, template <typename, std::size_t> class Hasher, std::size_t Max_probes>
 //template <typename Hasher1, typename Hasher2, std::size_t Max_probes>
-struct __attribute__ ((__packed__)) powerOfTwoHasher {
+struct __attribute__ ((__packed__)) XORPowerOfTwoHasher {
 
 
 	static_assert(Max_probes == 2);
@@ -35,13 +35,9 @@ struct __attribute__ ((__packed__)) powerOfTwoHasher {
 private:
 	Hasher<Key, Partition_Size> my_first_hasher;
 
-	Hasher<Key, Partition_Size> my_second_hasher;
-
 	int depth;
 
 	uint64_t hash1;
-
-	uint64_t hash2;
 
 	int i;
 
@@ -65,17 +61,14 @@ public:
 
 	//pull in hasher - need it's persistent storage
 
-	__host__ __device__ powerOfTwoHasher(uint64_t seed){
+	__host__ __device__ XORPowerOfTwoHasher(uint64_t seed){
 		my_first_hasher.init(seed);
-		my_second_hasher.init(seed*seed);
 	}
 
 
 	__host__ __device__ uint64_t begin(key_type ext_key){
 
 		hash1 = my_first_hasher.hash(ext_key);
-
-		hash2 = my_second_hasher.hash(ext_key);
 
 		i = 0;
 
@@ -86,7 +79,7 @@ public:
 
 		i+=1;
 
-		return i < Max_probes ? hash2 : end();
+		return i < Max_probes ? hash1 ^ (tag * 0x5bd1e995) : end();
 
 	}
 

@@ -185,6 +185,7 @@ public:
 
 	}
 
+
 	__device__ __inline__ bool remove_from_bucket(cg::thread_block_tile<Partition_Size> insert_tile, Key key, uint64_t insert_slot){
 
 
@@ -206,7 +207,7 @@ public:
 
 		probing_scheme_type insert_probing_scheme(seed);
 
-		for (uint64_t insert_slot = insert_probing_scheme.begin(key); insert_slot != insert_probing_scheme.end(); insert_slot = insert_probing_scheme.next()){
+		for (uint64_t insert_slot = insert_probing_scheme.begin(key); insert_slot != insert_probing_scheme.end(); insert_slot = insert_probing_scheme.next(rep_type::tag(key))){
 
        		insert_slot = insert_slot % num_buckets;
 
@@ -229,7 +230,7 @@ public:
 
 		probing_scheme_type insert_probing_scheme(seed);
 
-		for (uint64_t insert_slot = insert_probing_scheme.begin(key); insert_slot != insert_probing_scheme.end(); insert_slot = insert_probing_scheme.next()){
+		for (uint64_t insert_slot = insert_probing_scheme.begin(key); insert_slot != insert_probing_scheme.end(); insert_slot = insert_probing_scheme.next(rep_type::tag(key))){
 
        		insert_slot = insert_slot % num_buckets;
 
@@ -254,7 +255,7 @@ public:
 
 		probing_scheme_type insert_probing_scheme(seed);
 
-		for (uint64_t insert_slot = insert_probing_scheme.begin(key); insert_slot != insert_probing_scheme.end(); insert_slot = insert_probing_scheme.next()){
+		for (uint64_t insert_slot = insert_probing_scheme.begin(key); insert_slot != insert_probing_scheme.end(); insert_slot = insert_probing_scheme.next(rep_type::tag(key))){
 
 			insert_slot = insert_slot % num_buckets;
 
@@ -280,6 +281,7 @@ public:
 
 	}
 
+
 	__device__ __inline__ bool insert_if_not_exists_delete(cg::thread_block_tile<Partition_Size> insert_tile, Key key, Val val, Val & ext_val, bool &found_val){
 
 		//first step is to init probing scheme
@@ -289,7 +291,7 @@ public:
 
 		probing_scheme_type insert_probing_scheme(seed);
 
-		for (uint64_t insert_slot = insert_probing_scheme.begin(key); insert_slot != insert_probing_scheme.end(); insert_slot = insert_probing_scheme.next()){
+		for (uint64_t insert_slot = insert_probing_scheme.begin(key); insert_slot != insert_probing_scheme.end(); insert_slot = insert_probing_scheme.next(rep_type::tag(key))){
 
 			insert_slot = insert_slot % num_buckets;
 
@@ -327,7 +329,7 @@ public:
 
 		probing_scheme_type insert_probing_scheme(seed);
 
-		for (uint64_t insert_slot = insert_probing_scheme.begin(key); insert_slot != insert_probing_scheme.end(); insert_slot = insert_probing_scheme.next()){
+		for (uint64_t insert_slot = insert_probing_scheme.begin(key); insert_slot != insert_probing_scheme.end(); insert_slot = insert_probing_scheme.next(rep_type::tag(key))){
 
        			
        		insert_slot = insert_slot % num_buckets;
@@ -339,6 +341,12 @@ public:
 
 				//if (insert_tile.thread_rank() == 0) printf("Found in %llu!\n", insert_slot);
 				return true;
+			}
+
+			Val fake_val = 0;
+
+			if (check_fill_bucket(insert_tile, key, fake_val, insert_slot) != Bucket_Size){
+				return false;
 			}
      	
 
@@ -360,7 +368,7 @@ public:
 
 		probing_scheme_type insert_probing_scheme(seed);
 
-		for (uint64_t insert_slot = insert_probing_scheme.begin(key); insert_slot != insert_probing_scheme.end(); insert_slot = insert_probing_scheme.next()){
+		for (uint64_t insert_slot = insert_probing_scheme.begin(key); insert_slot != insert_probing_scheme.end(); insert_slot = insert_probing_scheme.next(rep_type::tag(key))){
 
        			
        		insert_slot = insert_slot % num_buckets;
@@ -373,6 +381,11 @@ public:
 				//if (insert_tile.thread_rank() == 0) printf("Found in %llu!\n", insert_slot);
 				return true;
 			}
+
+			if (check_fill_bucket(insert_tile, key, ext_val, insert_slot) != Bucket_Size){
+				return false;
+			}
+     	
      	
 
 		}

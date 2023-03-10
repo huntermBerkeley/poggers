@@ -80,7 +80,7 @@ public:
 		return hash1;
 	}
 
-	__host__ __device__ uint64_t next(){
+	__host__ __device__ uint64_t next(key_type tag){
 
 		i+=1;
 

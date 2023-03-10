@@ -31,7 +31,7 @@ struct  shortened_bitmask_key_val_pair {
 		__host__ __device__ static const SmallKey get_empty(){ return SmallKey{0}; }
 
 
-		__host__ __device__ inline const SmallKey get_smallKey(Key ext_key){ return SmallKey{ext_key}; }
+		static __host__ __device__ inline const SmallKey get_smallKey(Key ext_key){ return SmallKey{ext_key}; }
 
 		SmallKey key;
 
@@ -69,7 +69,11 @@ struct  shortened_bitmask_key_val_pair {
 
 		}
 
+		static __device__ inline Key tag(Key ext_key){
 
+			return get_smallKey(ext_key);
+
+		}
 
 
 		__host__ __device__ inline bool is_empty(){

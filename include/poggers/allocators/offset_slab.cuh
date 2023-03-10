@@ -1489,8 +1489,26 @@ struct smid_pinned_storage {
 	}
 
 
+
+	//ISSUE
+	//non primary may be passed in here and non be the primary... - thats bad mkay
+	//to rectify need to detect non match and swap out?
+
 	//reserve that you are exclusive manager - unset manager bit
 	//todo - only swap with known value of primary - prevent unneccesary swap outs
+
+
+	__device__ bool pivot_non_primary(int index, offset_alloc_bitarr * old_item){
+
+
+		if (!(slab_markers.unset_index(index) & SET_BIT_MASK(index))){
+
+			//claimed by someone else
+			return false;
+
+		}
+
+	}
 
 	__device__ int pivot_primary(offset_alloc_bitarr * old_primary){
 

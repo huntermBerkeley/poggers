@@ -63,6 +63,8 @@
 
 #include <poggers/representations/grouped_storage_sub_bits.cuh>
 
+#include <poggers/probing_schemes/xor_power_of_two.cuh>
+
 
 
 #include <stdio.h>
@@ -92,6 +94,10 @@
 #include <algorithm>
 #include <bitset>
 
+
+double elapsed(std::chrono::high_resolution_clock::time_point t1, std::chrono::high_resolution_clock::time_point t2) {
+   return (std::chrono::duration_cast<std::chrono::duration<double> >(t2 - t1)).count();
+}
 
 
 // using insert_type = poggers::insert_schemes::single_slot_insert<uint64_t, uint64_t, 8, 8, poggers::representations::key_val_pair, 5, poggers::hashers::murmurHasher, poggers::probing_schemes::doubleHasher>;
@@ -125,33 +131,33 @@
 // using tiny_static_table_4 = poggers::tables::static_table<uint64_t, uint16_t, poggers::representations::shortened_key_val_wrapper<uint16_t>::key_val_pair, 4, 4, poggers::insert_schemes::bucket_insert, 20, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
 // using tcf = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::shortened_key_val_wrapper<uint16_t>::key_val_pair, 4, 16, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher, true, tiny_static_table_4>;
 
-using tiny_static_table_4 = poggers::tables::static_table<uint64_t, uint16_t, poggers::representations::dynamic_container<poggers::representations::key_val_pair,uint16_t>::representation, 4, 4, poggers::insert_schemes::bucket_insert, 20, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
-using tcf = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_val_pair,uint16_t>::representation, 4, 16, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher, true, tiny_static_table_4>;
+// using tiny_static_table_4 = poggers::tables::static_table<uint64_t, uint16_t, poggers::representations::dynamic_container<poggers::representations::key_val_pair,uint16_t>::representation, 4, 4, poggers::insert_schemes::bucket_insert, 20, poggers::probing_schemes::doubleHasher, poggers::hashers::murmurHasher>;
+// using tcf = poggers::tables::static_table<uint64_t,uint16_t, poggers::representations::dynamic_container<poggers::representations::key_val_pair,uint16_t>::representation, 4, 16, poggers::insert_schemes::power_of_n_insert_shortcut_scheme, 2, poggers::probing_schemes::XORPowerOfTwoHasher, poggers::hashers::murmurHasher, true, tiny_static_table_4>;
 
 
 using del_backing_table = poggers::tables::bucketed_table<
-    uint64_t, uint8_t,
+    uint64_t, uint16_t,
     poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<
-        poggers::representations::bit_grouped_container<10, 6>::representation, uint16_t>::representation>::representation,
-    1, 8, poggers::insert_schemes::linear_insert_bucket_scheme, 20, poggers::probing_schemes::doubleHasher,
+        poggers::representations::bit_grouped_container<16, 16>::representation, uint16_t>::representation>::representation,
+    4, 8, poggers::insert_schemes::linear_insert_bucket_scheme, 400, poggers::probing_schemes::linearProber,
     poggers::hashers::murmurHasher>;
 
 
 
 using del_TCF = poggers::tables::bucketed_table<
-    uint64_t, uint8_t,
+    uint64_t, uint16_t,
     poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<
-        poggers::representations::bit_grouped_container<10, 6>::representation, uint16_t>::representation>::representation,
-    1, 8, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::doubleHasher,
+        poggers::representations::bit_grouped_container<16, 16>::representation, uint16_t>::representation>::representation,
+    4, 16, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::XORPowerOfTwoHasher,
     poggers::hashers::murmurHasher, true, del_backing_table>;
 
 
 
 using del_TCF_noback = poggers::tables::bucketed_table<
-    uint64_t, uint8_t,
+    uint64_t, uint16_t,
     poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<
-        poggers::representations::bit_grouped_container<10, 6>::representation, uint16_t>::representation>::representation,
-    1, 8, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::doubleHasher,
+        poggers::representations::bit_grouped_container<16, 16>::representation, uint32_t>::representation>::representation,
+    4, 16, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::XORPowerOfTwoHasher,
     poggers::hashers::murmurHasher>;
 
 
@@ -244,6 +250,32 @@ __global__ void speed_insert_kernel(Filter * filter, Key * keys, Val * vals, uin
 
 }
 
+
+template <typename Filter, typename Key, typename Val>
+__global__ void speed_insert_with_delete_kernel(Filter * filter, Key * keys, Val * vals, uint64_t nvals, uint64_t * misses){
+
+   auto tile = filter->get_my_tile();
+
+   uint64_t tid = tile.meta_group_size()*blockIdx.x + tile.meta_group_rank();
+
+   if (tid >= nvals) return;
+
+
+
+
+   if (!filter->insert_with_delete(tile, keys[tid], vals[tid]) && tile.thread_rank() == 0){
+      atomicAdd((unsigned long long int *) misses, 1ULL);
+   } else{
+
+      Val test_val = 0;
+      assert(filter->query(tile, keys[tid], test_val));
+   }
+
+   //assert(filter->insert(tile, keys[tid], vals[tid]));
+
+
+}
+
 template <typename Filter, typename Key, typename Val>
 __global__ void speed_insert_kernel_one_thread(Filter * filter, Key * keys, Val * vals, uint64_t nvals, uint64_t * misses){
 
@@ -295,10 +327,10 @@ __global__ void speed_delete_kernel(Filter * filter, Key * keys, uint64_t nvals,
       Val val;
       val+=0;
 
-      filter->query(tile, keys[tid], val);
-      filter->remove(tile, keys[tid]);
+      // filter->query(tile, keys[tid], val);
+      // filter->remove(tile, keys[tid]);
 
-      filter->query(tile, keys[tid], val);
+      // filter->query(tile, keys[tid], val);
 
       if ( tile.thread_rank() == 0) atomicAdd((unsigned long long int *) del_misses, 1ULL);
 
@@ -309,6 +341,7 @@ __global__ void speed_delete_kernel(Filter * filter, Key * keys, uint64_t nvals,
       val +=0 ;
       if (filter->query(tile,keys[tid], val) && tile.thread_rank() == 0 ){
 
+         //this is not necessarily a failure to delete, but is indicative of a false-positive match
          atomicAdd((unsigned long long int *) del_failures, 1ULL);
 
       }
@@ -567,6 +600,147 @@ __host__ void test_del_batched(Sizing_Type * Initializer){
 }
 
 
+template <typename Filter, typename Key, typename Val, typename Sizing_Type>
+__host__ void delete_tests(Sizing_Type * Initializer){
+
+
+
+
+   uint64_t nitems = Initializer->total()*.9;
+
+   printf("Starting false negative test for %llu items\n", nitems);
+
+   cudaDeviceSynchronize();
+
+
+   //static seed for testing
+   Filter * test_filter = Filter::generate_on_device(Initializer, 42);
+
+   Key * host_keys = generate_data<Key>(nitems);
+   Val * host_vals = generate_data<Val>(nitems);
+
+   Key * dev_keys;
+
+   Val * dev_vals;
+
+   cudaMalloc((void **)& dev_keys, nitems*sizeof(Key));
+   cudaMalloc((void **)& dev_vals, nitems*sizeof(Val));
+
+   cudaMemcpy(dev_keys, host_keys, nitems*sizeof(Key), cudaMemcpyHostToDevice);
+   cudaMemcpy(dev_vals, host_vals, nitems*sizeof(Val), cudaMemcpyHostToDevice);
+
+
+   uint64_t * misses;
+
+   cudaMallocManaged((void **)& misses, sizeof(uint64_t)*6);
+   cudaDeviceSynchronize();
+
+
+   misses[0] = 0;
+   misses[1] = 0;
+   misses[2] = 0;
+   misses[3] = 0;
+   misses[4] = 0;
+   misses[5] = 0;
+
+
+   auto insert_start = std::chrono::high_resolution_clock::now();
+
+   speed_insert_kernel<Filter, Key, Val><<<test_filter->get_num_blocks(nitems),test_filter->get_block_size(nitems)>>>(test_filter, dev_keys, dev_vals, nitems, misses);
+   
+   cudaDeviceSynchronize();
+
+
+   auto insert_end = std::chrono::high_resolution_clock::now();
+
+
+   uint64_t fill_before = test_filter->get_fill();
+
+
+   cudaMemcpy(dev_keys, host_keys, nitems*sizeof(Key), cudaMemcpyHostToDevice);
+   cudaMemcpy(dev_vals, host_vals, nitems*sizeof(Val), cudaMemcpyHostToDevice);
+
+   cudaDeviceSynchronize();
+
+
+   // //and delete half
+
+   auto delete_start = std::chrono::high_resolution_clock::now();
+   speed_delete_kernel<Filter, Key, Val><<<test_filter->get_num_blocks(nitems/2), test_filter->get_block_size(nitems/2)>>>(test_filter, dev_keys, nitems/2, misses+1, misses+2);
+
+
+   cudaDeviceSynchronize();
+
+   auto delete_end = std::chrono::high_resolution_clock::now();
+
+
+   // //and query.
+
+   cudaDeviceSynchronize();
+
+   cudaMemcpy(dev_keys, host_keys, nitems*sizeof(Key), cudaMemcpyHostToDevice);
+   cudaMemcpy(dev_vals, host_vals, nitems*sizeof(Val), cudaMemcpyHostToDevice);
+
+
+   uint64_t fill_after = test_filter->get_fill();
+
+   cudaDeviceSynchronize();
+
+   auto query_start = std::chrono::high_resolution_clock::now();
+
+   speed_query_kernel<Filter, Key, Val><<<test_filter->get_num_blocks(nitems/2), test_filter->get_block_size(nitems/2)>>>(test_filter, dev_keys+nitems/2, dev_vals+nitems/2, nitems/2, misses+3, misses+4);
+
+   cudaDeviceSynchronize();
+
+   auto query_end = std::chrono::high_resolution_clock::now();
+
+   cudaMemcpy(dev_keys, host_keys, nitems*sizeof(Key), cudaMemcpyHostToDevice);
+   cudaMemcpy(dev_vals, host_vals, nitems*sizeof(Val), cudaMemcpyHostToDevice);
+
+
+   cudaDeviceSynchronize();
+
+   auto readd_start = std::chrono::high_resolution_clock::now();
+
+
+   //and final insert step..
+   speed_insert_with_delete_kernel<Filter, Key, Val><<<test_filter->get_num_blocks(nitems/2),test_filter->get_block_size(nitems/2)>>>(test_filter, dev_keys, dev_vals, nitems/2, misses+5);
+   
+   cudaDeviceSynchronize();
+
+   auto readd_end = std::chrono::high_resolution_clock::now();
+
+   uint64_t final_fill = test_filter->get_fill();
+
+
+   printf("Insert fails: %llu, delete misses: %llu, delete false matching: %llu, False negatives: %llu, false positives: %llu, re-add misses %llu\n", misses[0], misses[1], misses[2], misses[3], misses[4], misses[5]);
+
+   double insert_throughput = 1.0*nitems/elapsed(insert_start, insert_end);
+
+   double query_throughput = .5*nitems/elapsed(query_start, query_end);
+
+   double delete_throughput = .5*nitems/elapsed(delete_start, delete_end);
+
+   double readd_throughput = .5*nitems/elapsed(readd_start, readd_end);
+
+   printf("Insert throughput: %f, delete throughput: %f, query throughput: %f, readd throughput: %f\n", insert_throughput, delete_throughput, query_throughput, readd_throughput);
+
+
+   printf("Fill before: %llu, fill_after: %llu, %f ... Final fill: %llu\n", fill_before, fill_after, 1.0*fill_after/fill_before, final_fill);
+   cudaDeviceSynchronize();
+
+   cudaFree(misses);
+
+   cudaFree(dev_keys);
+
+   cudaFree(dev_vals);
+
+   Filter::free_on_device(test_filter);
+
+}
+
+
+
 // __host__ void test_p2(uint64_t nitems){
 
 //    printf("size: %llu\n", nitems);
@@ -610,30 +784,57 @@ int main(int argc, char** argv) {
    // printf("2^28\n");
    // test_speed<table_type, uint64_t, uint64_t>(&first_size_28);
 
-   int nbits = 20;
+   int nbits = 24;
 
 
    //build very tiny test
-   poggers::sizing::variadic_size test_size_24 (24);
+   //poggers::sizing::variadic_size test_size_24 (24);
 
    // //printf("22 size: %llu\n", test_size_24.total());
-   test_del_batched<del_TCF_noback, uint64_t, uint8_t>(&test_size_24);
+   //test_del_batched<del_TCF_noback, uint64_t, uint8_t>(&test_size_24);
    // test_speed_batched<tcqf, uint64_t, uint16_t>("results/test_24", generate_size(24), 20);
    // test_speed_batched<tcqf, uint64_t, uint16_t>("results/test_26", generate_size(26), 20);
    // test_speed_batched<tcqf, uint64_t, uint16_t>("results/test_28", generate_size(28), 20);
    // test_speed_batched<tcqf, uint64_t, uint16_t>("results/test_30", generate_size(30), 20);
 
-   cudaDeviceSynchronize();
+   // poggers::sizing::size_in_num_slots<2> tiny_bucket_size (24, 8);
 
+   // test_del_batched<del_TCF, uint64_t, uint16_t>(&tiny_bucket_size);
+
+
+   //cudaDeviceSynchronize();
+
+
+
+   //poggers::sizing::size_in_num_slots<1> bucket_size (1ULL<<nbits);
+
+   //test_del_false_negative<del_TCF_noback, uint64_t, uint16_t, poggers::sizing::size_in_num_slots<1>>(&bucket_size);
+
+   //delete_tests<del_TCF_noback, uint64_t, uint16_t>(&bucket_size);
+
+   poggers::sizing::size_in_num_slots<1> bucket_size_noback (1ULL<<nbits);
+
+
+   delete_tests<del_TCF_noback, uint64_t, uint16_t>(&bucket_size_noback);
+
+
+   for (int i = 0; i< 1; i++){
+
+      poggers::sizing::size_in_num_slots<2> bucket_size_2 (1ULL<<nbits, (1ULL <<nbits)/100);
+
+
+      delete_tests<del_TCF, uint64_t, uint16_t>(&bucket_size_2);
+
+   }
 
    // poggers::sizing::variadic_size test_size_24_tcf ((1ULL << nbits), (1ULL << nbits)/100);
 
    // //printf("22 size: %llu\n", test_size_24.total());
-   // test_speed_batched<tcf, uint64_t, uint16_t>("results/test_32", &test_size_24_tcf, 20);
+   //test_speed_batched<tcf, uint64_t, uint16_t>("results/test_32", &test_size_24_tcf, 20);
 
 
 
-   poggers::sizing::size_in_num_slots<1> bucket_size (1ULL<<nbits);
+   //poggers::sizing::size_in_num_slots<1> bucket_size (1ULL<<nbits);
 
    //test_speed_batched<double_buckets, uint64_t,uint64_t>("results/double_buckets", &bucket_size, 20);
 
@@ -686,7 +887,7 @@ int main(int argc, char** argv) {
    // poggers::sizing::size_in_num_slots<3> iceberg_size((1ULL << 28), (1ULL << 28)/8, 1500);
    // test_speed<iceberg_table, uint64_t, uint64_t>(&iceberg_size);
 
-   del_TCF test;
+   //del_TCF test;
 
 	return 0;
 

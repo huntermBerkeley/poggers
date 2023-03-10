@@ -63,6 +63,12 @@ struct  key_container {
 			return (key == ext_key);
 		}
 
+		static __device__ inline Key tag(Key ext_key){
+
+			return ext_key;
+
+		}
+
 		__host__ __device__ const inline Val get_val(Key ext_key){
 			return (Val) 0;
 		}
@@ -81,6 +87,35 @@ struct  key_container {
 
 			return false;
 
+		}
+
+		__device__ __inline__ bool atomic_swap_tombstone(Key const ext_key, Val const ext_val){
+
+			if (poggers::helpers::typed_atomic_write(&key, ext_key, get_tombstone())){
+
+				//val = ext_val;
+
+				return true;
+
+			}
+
+			return false;
+
+		}
+
+
+		__device__ inline bool atomic_insert(Key const ext_key, Val const ext_val){
+
+			if (is_empty()){
+				return atomic_swap(ext_key, ext_val);
+			} else {
+				return atomic_swap_tombstone(ext_key, ext_val);
+			}
+
+		}
+
+		__device__ inline bool is_empty_or_tombstone(){
+			return is_empty() || contains_tombstone();
 		}
 
 		

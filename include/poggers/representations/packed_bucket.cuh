@@ -50,10 +50,6 @@ struct  bucketed_internal_dynamic_container {
 				// printf("%d: is_empty: %d, is full: %d tombstone %x contained: %x\n", i, storage[i].is_empty(), storage[i].contains(storage[i].get_tombstone()), storage[i].get_tombstone(), storage[i]);
 				// }
 
-				bool empty = storage[i].is_empty();
-
-				bool tombstone = storage[i].contains_tombstone();
-
 				bool filled = !(storage[i].is_empty() || storage[i].contains_tombstone());
 
 				fill += __popc(insert_tile.ballot(filled));
@@ -125,7 +121,7 @@ struct  bucketed_internal_dynamic_container {
 
 				//Storage_type * key_ptr = &keys[0];
 
-				if (storage[i].is_empty() || storage[i].contains(storage[i].get_tombstone())){
+				if (storage[i].is_empty() || storage[i].contains_tombstone()){
 				//if (poggers::helpers::sub_byte_match<Key>(key_ptr, get_empty(), i)){
 					ballot = true;
 				}
@@ -153,6 +149,10 @@ struct  bucketed_internal_dynamic_container {
 
 							ballot = storage[i].atomic_swap_tombstone(key, val);
 
+
+							// if (!ballot && storage[i].contains_tombstone()){
+							// 	printf("Bug in swapping\n");
+							// }
 						}
 
 						
@@ -215,6 +215,12 @@ struct  bucketed_internal_dynamic_container {
 			}
 
 			return false;
+
+		}
+
+		static __device__ inline Key tag(Key ext_key){
+
+			return filled_container_type::tag(ext_key);
 
 		}
 

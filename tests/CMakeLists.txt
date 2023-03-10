@@ -69,7 +69,10 @@ ConfigureExecutable(one_size_allocator_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/on
 
 ConfigureExecutable(offset_slab_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/offset_slab_tests.cu" "${POGGERS_TESTS_BINARY_DIR}")
 
+ConfigureExecutable(ext_veb_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/ext_veb_tests.cu" "${POGGERS_TESTS_BINARY_DIR}")
 
 ConfigureExecutable(delete_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/delete_tests.cu" "${POGGERS_TESTS_BINARY_DIR}")
+
+ConfigureExecutable(sub_veb_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/sub_veb_tests.cu" "${POGGERS_TESTS_BINARY_DIR}")
 
 ConfigureExecutable(slab_one_size_tests "${CMAKE_CURRENT_SOURCE_DIR}/src/slab_one_size_tests.cu" "${POGGERS_TESTS_BINARY_DIR}")

@@ -63,6 +63,8 @@
 
 #include <poggers/representations/grouped_storage_sub_bits.cuh>
 
+#include <poggers/probing_schemes/xor_power_of_two.cuh>
+
 
 
 #include <stdio.h>
@@ -139,7 +141,7 @@ using del_TCF = poggers::tables::bucketed_table<
     uint64_t, uint8_t,
     poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<
         poggers::representations::bit_grouped_container<10, 6>::representation, uint16_t>::representation>::representation,
-    1, 8, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::doubleHasher,
+    1, 8, poggers::insert_schemes::power_of_n_insert_shortcut_bucket_scheme, 2, poggers::probing_schemes::XORPowerOfTwoHasher,
     poggers::hashers::murmurHasher, true, del_backing_table>;
 
 

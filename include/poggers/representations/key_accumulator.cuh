@@ -80,6 +80,13 @@ struct  key_val_pair {
 			return val;
 		}
 
+
+		static __device__ inline Key tag(Key ext_key){
+
+			return ext_key;
+
+		}
+
 		//cycle two down to prevent rollover cases
 		__host__ __device__ static const Val maxVal(){
 
@@ -100,6 +107,23 @@ struct  key_val_pair {
 
 			return false;
 
+		}
+
+		__device__ inline bool atomic_insert(Key const ext_key, Val const ext_val){
+
+			if (is_empty()){
+
+				return atomic_swap(ext_key, ext_val);
+				
+			} else {
+
+				return atomic_swap_tombstone(ext_key, ext_val);
+			}
+
+		}
+
+		__device__ inline bool is_empty_or_tombstone(){
+			return is_empty() || contains_tombstone();
 		}
 
 		

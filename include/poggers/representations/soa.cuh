@@ -80,6 +80,12 @@ struct  struct_of_arrays {
 
 		}
 
+		static __device__ inline Key tag(Key ext_key){
+
+			return ext_key;
+
+		}
+
 		__device__ inline bool insert(cg::thread_block_tile<Partition_Size> insert_tile, Key key, Val val){
 
 

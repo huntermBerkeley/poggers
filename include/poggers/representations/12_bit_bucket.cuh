@@ -24,6 +24,10 @@ namespace poggers {
 
 namespace representations { 
 
+
+//TODO: Does not yet support delete FN fix
+//need to batch sub_byte_match to be consistent for all sizes.
+
 template <typename Key, typename Val, typename Storage_type, std::size_t Partition_Size, std::size_t Bucket_Size>
 //alignas(Recursive_size<(sizeof(Key) + sizeof(Val))>::result) 
 struct  twelve_bucket {
@@ -292,6 +296,10 @@ struct  twelve_bucket {
 
 		}
 
+
+		static Key tag(Key key){
+
+		}
 		
 
 };

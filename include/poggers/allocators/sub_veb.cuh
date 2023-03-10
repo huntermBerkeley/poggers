@@ -1,5 +1,5 @@
-#ifndef VEB_TREE
-#define VEB_TREE
+#ifndef SUB_sub_veb_tree
+#define SUB_sub_veb_tree
 //A CUDA implementation of the Van Emde Boas tree, made by Hunter McCoy (hunter@cs.utah.edu)
 //Copyright (C) 2023 by Hunter McCoy
 
@@ -18,6 +18,8 @@
 // WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE
 // OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+
+//This is a chunk of a VEB tree - used by the extending VEB
 
 //inlcudes
 #include <cstdio>
@@ -84,15 +86,15 @@ __global__ void init_bits(uint64_t * bits, uint64_t items_in_universe){
 }
 
 
-template <typename veb_tree_kernel_type>
-__global__ void veb_report_fill_kernel(veb_tree_kernel_type * tree, uint64_t num_threads, uint64_t * fill_count){
+template <typename sub_veb_tree_kernel_type>
+__global__ void veb_report_fill_kernel(sub_veb_tree_kernel_type * tree, uint64_t num_threads, uint64_t * fill_count){
 
 	uint64_t tid = threadIdx.x+blockIdx.x*blockDim.x;
 
 	if (tid >= num_threads) return;
 
 
-	uint64_t my_fill = __popcll(tree->layers[tree->num_layers-1]->bits[tid]);
+	uint64_t my_fill = __popcll(tree->layers[tree->num_layers-1].bits[tid]);
 
 	atomicAdd((unsigned long long int *)fill_count, (unsigned long long int) my_fill);
 
@@ -117,75 +119,37 @@ struct layer{
 	//int * max;
 	//int * min;
 
-
-	__host__ static layer * generate_on_device(uint64_t items_in_universe){
-
-
-		uint64_t ext_num_blocks = (items_in_universe-1)/64+1;
-
-		printf("Universe of %lu items in %lu bytes\n", items_in_universe, ext_num_blocks);
-
-
-		layer * host_layer;
-
-
-		cudaMallocHost((void **)&host_layer, sizeof(layer));
-
-		uint64_t * dev_bits;
-
-		cudaMalloc((void **)&dev_bits, sizeof(uint64_t)*ext_num_blocks);
-
-
-		cudaMemset(dev_bits, 0, sizeof(uint64_t)*ext_num_blocks);
-
-
-		init_bits<<<(items_in_universe-1)/256+1, 256>>>(dev_bits, items_in_universe);
-
-		cudaDeviceSynchronize();
-
-		host_layer->universe_size = items_in_universe;
-
-		host_layer->num_blocks = ext_num_blocks;
-
-		host_layer->bits = dev_bits;
-
-
-		layer * dev_layer;
-
-		cudaMalloc((void **)&dev_layer, sizeof(layer));
-
-		cudaMemcpy(dev_layer, host_layer, sizeof(layer), cudaMemcpyHostToDevice);
-
-		cudaDeviceSynchronize();
-
-
-		cudaFreeHost(host_layer);
-
-		cudaDeviceSynchronize();
-
-		return dev_layer;
-
-
-
+	__device__ void * get_mem(){
+		return (void *) bits;
 	}
 
+	__device__ void reset_mem(){
+		bits = nullptr;
+	}
 
-
-	__device__ static uint64_t get_num_blocks(uint64_t items_in_universe){
+	__device__ static uint64_t static_get_num_blocks(uint64_t items_in_universe){
 		return (items_in_universe-1)/64+1;
 	}
 
-	__device__ static uint64_t get_size_bytes(uint items_in_universe){
-		return get_num_blocks(items_in_universe)*sizeof(uint64_t);
+	__device__ static uint64_t static_get_size_bytes(uint64_t items_in_universe){
+		return static_get_num_blocks(items_in_universe)*sizeof(uint64_t);
 	}
 
 
+	__device__ uint64_t get_num_blocks(){
+		return num_blocks;
+	}
+
+	__device__ uint64_t get_size_bytes(){
+		return get_num_blocks()*sizeof(uint64_t);
+	}
+
 	//given a device layer initialize.
-	__device__ void init_from_array(uint64_t items_in_universe, uint64_t * array){
+	__device__ void init_array(uint64_t * array){
 
-		universe_size = items_in_universe;
+		bits = array;
 
-		num_blocks = get_num_blocks(items_in_universe);
+		uint64_t num_blocks = get_num_blocks();
 
 		for (uint64_t i =0; i< num_blocks; i++){
 			bits[i] = ~0ULL;
@@ -195,6 +159,15 @@ struct layer{
 
 		return;
 
+	}
+
+
+	__device__ void device_init(uint64_t items_in_universe){
+		universe_size = items_in_universe;
+
+		num_blocks = static_get_num_blocks(items_in_universe);
+
+		bits = nullptr;
 	}
 
 	__host__ static void free_on_device(layer * dev_layer){
@@ -285,23 +258,22 @@ struct layer{
 };
 
 
-struct veb_tree {
+struct sub_veb_tree {
 
 
 	uint64_t seed;
 	uint64_t total_universe;
 	int num_layers;
-	layer ** layers;
+	layer * layers;
 
-	//don't think this calculation is correct
-	__host__ static veb_tree * generate_on_device(uint64_t universe, uint64_t ext_seed){
+	//if all pointers point to nullptr 
+	//how big are we?
+	//This is the number of bytes required for both the main object
+	//and all layer pointers.
+	static __host__ uint64_t get_size_bytes_noarray(uint64_t universe){
 
 
-
-		veb_tree * host_tree;
-
-		cudaMallocHost((void **)&host_tree, sizeof(veb_tree));
-
+		uint64_t bytes = sizeof(sub_veb_tree);
 
 		int max_height = 64 - __builtin_clzll(universe);
 
@@ -309,110 +281,114 @@ struct veb_tree {
 		//round up but always assume
 		int ext_num_layers = (max_height-1)/6+1;
 
+		bytes += ext_num_layers*sizeof(layer);
 
-		layer ** host_layers;
+		return bytes;
 
-		cudaMallocHost((void **)&host_layers, ext_num_layers*sizeof(layer *));
+	}
 
+	static __device__ uint64_t device_get_size_bytes_noarray(uint64_t universe){
+
+
+		uint64_t bytes = sizeof(sub_veb_tree);
+
+		int max_height = 64 - __clzll(universe);
+
+		assert(max_height >= 1);
+		//round up but always assume
+		int ext_num_layers = (max_height-1)/6+1;
+
+		bytes += ext_num_layers*sizeof(layer);
+
+		return bytes;
+
+	}
+
+	//given memory from the external allocator, initialize this tree component.
+	static __device__ sub_veb_tree * init(void * memory, uint64_t universe, uint64_t ext_seed){
+
+		sub_veb_tree * tree = (sub_veb_tree *) memory;
+
+
+		int max_height = 64 - __clzll(universe);
+
+		assert(max_height >= 1);
+		//round up but always assume
+		int ext_num_layers = (max_height-1)/6+1;
+
+
+		tree->num_layers = ext_num_layers;
+
+		tree->total_universe = universe;
+
+		tree->seed = ext_seed;
+
+		tree->layers = (layer *) ( (uint64_t ) memory + sizeof(sub_veb_tree));
 
 		uint64_t ext_universe_size = universe;
 
 		for (int i =0; i < ext_num_layers; i++){
 
-			host_layers[ext_num_layers-1-i] = layer::generate_on_device(ext_universe_size);
+			tree->layers[ext_num_layers-1-i].device_init(ext_universe_size);
 
 			ext_universe_size = (ext_universe_size-1)/64 +1;
 
 		}
 
+		return tree;
 
-		layer ** dev_layers;
-
-		cudaMalloc((void **)&dev_layers, ext_num_layers*sizeof(layer *));
-
-		cudaMemcpy(dev_layers, host_layers, ext_num_layers*sizeof(layer *), cudaMemcpyHostToDevice);
-
-		cudaDeviceSynchronize();
-
-		cudaFreeHost(host_layers);
-
-		//setup host structure
-		host_tree->num_layers = ext_num_layers;
-
-		host_tree->layers = dev_layers;
-
-		host_tree->seed = ext_seed;
-
-		host_tree->total_universe = universe;
-
-
-		veb_tree * dev_tree;
-		cudaMalloc((void **)&dev_tree, sizeof(veb_tree));
-
-
-		cudaMemcpy(dev_tree, host_tree, sizeof(veb_tree), cudaMemcpyHostToDevice);
-
-
-		cudaFreeHost(host_tree);
-
-		return dev_tree;
-
+		
 
 	}
 
-	//if all pointers point to nullptr 
-	//how big are we?
-	//This is the number of bytes required for both the main object
-	//and all layer pointers.
-	// static __host__ uint64_t get_size_bytes_noarray(){
 
+	//on an already initialized sub_veb_tree, init the arrays.
+	__device__ uint64_t get_num_bytes_arrays(){
 
-	// 	uint64_t bytes = sizof(my_type)
+		uint64_t bytes = 0;
+		for (int i = 0; i < num_layers; i++){
 
-	// }
-
-
-	__host__ static void free_on_device(veb_tree * dev_tree){
-
-
-		veb_tree * host_tree;
-
-		cudaMallocHost((void **)&host_tree, sizeof(veb_tree));
-
-		cudaMemcpy(host_tree, dev_tree, sizeof(veb_tree), cudaMemcpyDeviceToHost);
-
-		cudaDeviceSynchronize();
-
-		int ext_num_layers = host_tree->num_layers;
-
-		printf("Cleaning up tree with %d layers\n", ext_num_layers);
-
-		layer ** host_layers;
-
-		cudaMallocHost((void **)&host_layers, ext_num_layers*sizeof(layer *));
-
-		cudaMemcpy(host_layers, host_tree->layers, ext_num_layers*sizeof(layer *), cudaMemcpyDeviceToHost);
-
-		cudaDeviceSynchronize();
-
-
-		for (int i = 0; i < ext_num_layers; i++){
-
-			layer::free_on_device(host_layers[i]);
+			bytes += layers[i].get_size_bytes();
 
 		}
 
-		cudaDeviceSynchronize();
 
+		return bytes;
 
-		cudaFreeHost(host_layers);
+	}
 
-		cudaFreeHost(host_tree);
+	//assumes arrays have been booted correctly using the requester from get_num_bytes_arrays
+	//if this isn't true this will segfault.
+	__device__ void init_arrays(void * memory){
 
-		cudaFree(dev_tree);
+		for (int i =0; i < num_layers; i++){
+
+			layers[i].init_array((uint64_t *) memory);
+
+			memory = (void *) ((uint64_t) memory + layers[i].get_size_bytes());
+
+		}
 
 
 	}
+
+
+	//unsets memory and returns a handler to the memory segment used for bits.
+	__device__ void * free_memory(){
+
+		void * start = layers[0].get_mem();
+
+		for (int i =0; i < num_layers; i++){
+			layers[i].reset_mem();
+		}
+
+		return start;
+
+
+	}
+
+
+
 
 	__device__ bool float_up(int & layer, uint64_t &high, int &low){
 
@@ -448,13 +424,13 @@ struct veb_tree {
 
 		int layer = num_layers - 1;
 
-		uint64_t old = layers[layer]->remove(high, low);
+		uint64_t old = layers[layer].remove(high, low);
 
 		if (!(old & SET_BIT_MASK(low))) return false;
 
 		while (__popcll(old) == 1 && float_up(layer, high, low)){
 
-			old = layers[layer]->remove(high, low);
+			old = layers[layer].remove(high, low);
 		}
 
 		return true;
@@ -471,12 +447,12 @@ struct veb_tree {
 
 		int layer = num_layers - 1;
 
-		uint64_t old = layers[layer]->insert(high, low);
+		uint64_t old = layers[layer].insert(high, low);
 
 		if ((old & SET_BIT_MASK(low))) return false;
 
 		while (__popcll(old) == VEB_RESTART_CUTOFF && float_up(layer, high, low)){
-			old = layers[layer]->insert(high, low);
+			old = layers[layer].insert(high, low);
 		}
 
 		return true;
@@ -491,7 +467,7 @@ struct veb_tree {
 		uint64_t high = query_val >> 6;
 		int low = query_val & BITMASK(6);
 
-		return layers[num_layers-1]->query(high, low);
+		return layers[num_layers-1].query(high, low);
 
 	}
 
@@ -518,12 +494,12 @@ struct veb_tree {
 
 		while (true) {
 
-			int found_idx = layers[layer]->find_next(high, low);
+			int found_idx = layers[layer].find_next(high, low);
 
 
 			if (found_idx == -1){
 
-				if (layer== 0) return veb_tree::fail();	
+				if (layer== 0) return sub_veb_tree::fail();	
 
 				float_up(layer, high, low);
 				continue;
@@ -540,18 +516,18 @@ struct veb_tree {
 
 		while (layer != (num_layers-1)){
 
-			low = layers[layer]->find_next(high, low);
+			low = layers[layer].find_next(high, low);
 
 			if (low == -1){
-				return veb_tree::fail();
+				return sub_veb_tree::fail();
 			}
 			float_down(layer, high, low);
 
 		}
 
-		low = layers[layer]->find_next(high, low);
+		low = layers[layer].find_next(high, low);
 
-		if (low == -1) return veb_tree::fail();
+		if (low == -1) return sub_veb_tree::fail();
 
 		return (high << 6) + low;
 
@@ -564,13 +540,13 @@ struct veb_tree {
 		//temporarily clipped for debugging
 		if (query(start) && remove(start)){ return start; }
 
-		//return veb_tree::fail();
+		//return sub_veb_tree::fail();
 
 		while (true){
 
 			start = successor(start);
 
-			if (start == veb_tree::fail()) return start;
+			if (start == sub_veb_tree::fail()) return start;
 
 
 			//this successor search is returning massive values - why?
@@ -612,7 +588,7 @@ struct veb_tree {
 			uint64_t offset = lock_offset(index_to_start);
 
 
-			if (offset != veb_tree::fail()) return offset;
+			if (offset != sub_veb_tree::fail()) return offset;
 
 			attempts++;
 		}
@@ -632,11 +608,11 @@ struct veb_tree {
 
 	__host__ uint64_t host_get_universe(){
 
-		veb_tree * host_version;
+		sub_veb_tree * host_version;
 
-		cudaMallocHost((void **)&host_version, sizeof(veb_tree));
+		cudaMallocHost((void **)&host_version, sizeof(sub_veb_tree));
 
-		cudaMemcpy(host_version, this, sizeof(veb_tree), cudaMemcpyDeviceToHost);
+		cudaMemcpy(host_version, this, sizeof(sub_veb_tree), cudaMemcpyDeviceToHost);
 
 		cudaDeviceSynchronize();
 
@@ -666,7 +642,7 @@ struct veb_tree {
 
 		uint64_t num_threads = max_value/64;
 
-		veb_report_fill_kernel<veb_tree><<<(num_threads-1)/512+1, 512>>>(this, num_threads, fill_count);
+		veb_report_fill_kernel<sub_veb_tree><<<(num_threads-1)/512+1, 512>>>(this, num_threads, fill_count);
 
 		cudaDeviceSynchronize();
 
