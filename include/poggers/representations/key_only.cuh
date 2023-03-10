@@ -63,6 +63,10 @@ struct  key_container {
 			return (key == ext_key);
 		}
 
+		__host__ __device__ inline bool contains_tombstone(){
+			return contains(get_tombstone());
+		}
+
 		static __device__ inline Key tag(Key ext_key){
 
 			return ext_key;
