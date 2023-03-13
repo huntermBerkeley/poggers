@@ -67,22 +67,10 @@ namespace poggers {
 namespace allocators {
 
 
-
-#define FILL_NEW .8
-
-
-//planning
-//each tree will use bytes bytes for the main allocation.
-
-//universe_size = bytes_per_chunk/alloc_size...
-
 template<uint64_t bytes_per_chunk, uint64_t alloc_size>
 struct extending_veb_allocator {
 
 
-	uint64_t * bitmap;
-
-	uint64_t * counters;
 
 	sub_veb_tree * trees;
 
@@ -102,17 +90,6 @@ struct extending_veb_allocator {
 	}
 
 
-
-
-
-	__device__ void * malloc(){
-
-
-
-	}
-
-
-	__device__ void free
 
 
 }
