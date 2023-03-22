@@ -139,7 +139,7 @@ using del_backing_table = poggers::tables::bucketed_table<
     uint64_t, uint16_t,
     poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<
         poggers::representations::bit_grouped_container<16, 16>::representation, uint16_t>::representation>::representation,
-    4, 8, poggers::insert_schemes::linear_insert_bucket_scheme, 4000, poggers::probing_schemes::linearProber,
+    4, 8, poggers::insert_schemes::linear_insert_bucket_scheme, 40000, poggers::probing_schemes::linearProber,
     poggers::hashers::murmurHasher>;
 
 
@@ -166,7 +166,7 @@ using del_backing_table_small = poggers::tables::bucketed_table<
     uint64_t, uint8_t,
     poggers::representations::dynamic_bucket_container<poggers::representations::dynamic_container<
         poggers::representations::bit_grouped_container<8, 8>::representation, uint8_t>::representation>::representation,
-    4, 8, poggers::insert_schemes::linear_insert_bucket_scheme, 400, poggers::probing_schemes::linearProber,
+    4, 8, poggers::insert_schemes::linear_insert_bucket_scheme, 40000, poggers::probing_schemes::linearProber,
     poggers::hashers::murmurHasher>;
 
 
@@ -261,6 +261,7 @@ __global__ void speed_insert_kernel(Filter * filter, Key * keys, Val * vals, uin
    } else{
 
       Val test_val = 0;
+      test_val+=0;
       assert(filter->query(tile, keys[tid], test_val));
    }
 
@@ -355,7 +356,7 @@ __global__ void speed_delete_kernel(Filter * filter, Key * keys, uint64_t nvals,
 
    } else {
 
-      Val val;
+      Val val =0;
       //thank you compiler very cool
       val +=0 ;
       if (filter->query(tile,keys[tid], val) && tile.thread_rank() == 0 ){
@@ -620,14 +621,27 @@ __host__ void test_del_batched(Sizing_Type * Initializer){
 
 
 template <typename Filter, typename Key, typename Val, typename Sizing_Type>
-__host__ void delete_tests(Sizing_Type * Initializer){
+__host__ void sawtooth_test(Sizing_Type * Initializer, int batch_ratio, int num_rounds){
 
 
-
+   uint64_t * shifts = generate_data<uint64_t>(num_rounds);
 
    uint64_t nitems = Initializer->total()*.9;
 
-   printf("Starting false negative test for %llu items\n", nitems);
+
+
+   uint64_t delete_nitems = nitems*batch_ratio/100;
+
+   uint64_t query_nitems = nitems-delete_nitems;
+
+
+   //start of random range for delete overwrites must be in boundary.
+   for (int i = 0; i < num_rounds; i++){
+      //shifts[i] = shifts[i] % query_nitems;
+      shifts[i] = 0;
+   }
+
+   printf("Starting sawtooth test for %llu items\n", nitems);
 
    cudaDeviceSynchronize();
 
@@ -642,11 +656,24 @@ __host__ void delete_tests(Sizing_Type * Initializer){
 
    Val * dev_vals;
 
-   cudaMalloc((void **)& dev_keys, nitems*sizeof(Key));
-   cudaMalloc((void **)& dev_vals, nitems*sizeof(Val));
+   cudaMallocManaged((void **)& dev_keys, nitems*sizeof(Key));
+   cudaMallocManaged((void **)& dev_vals, nitems*sizeof(Val));
 
    cudaMemcpy(dev_keys, host_keys, nitems*sizeof(Key), cudaMemcpyHostToDevice);
    cudaMemcpy(dev_vals, host_vals, nitems*sizeof(Val), cudaMemcpyHostToDevice);
+
+
+   Key * query_keys;
+
+
+   Key * delete_keys;
+
+
+   cudaMallocManaged((void **)&delete_keys, sizeof(Key)*delete_nitems);
+
+   cudaMallocManaged((void **)&query_keys, sizeof(Key)*query_nitems);
+
+
 
 
    uint64_t * misses;
@@ -681,71 +708,88 @@ __host__ void delete_tests(Sizing_Type * Initializer){
 
    cudaDeviceSynchronize();
 
+   for (int i =0; i< num_rounds; i++){
+
+      //first get delete and query items
+
+      //printf("Starting round %d\n", i);
+
+      uint64_t start_of_deletes = shifts[i];
+
+      cudaMemcpy(delete_keys, host_keys+start_of_deletes, delete_nitems*sizeof(Key), cudaMemcpyHostToDevice);
+
+      cudaMemcpy(query_keys, host_keys, start_of_deletes*sizeof(Key), cudaMemcpyHostToDevice);
+
+      cudaMemcpy(query_keys+start_of_deletes, host_keys+start_of_deletes+delete_nitems, (query_nitems-start_of_deletes)*sizeof(Key), cudaMemcpyHostToDevice);
+
+      cudaDeviceSynchronize();
+
+
+
+      //then run delete kernel
+
+      speed_delete_kernel<Filter, Key, Val><<<test_filter->get_num_blocks(delete_nitems), test_filter->get_block_size(delete_nitems)>>>(test_filter, delete_keys, delete_nitems, misses+1, misses+2);
+
+      cudaDeviceSynchronize();
+
+      //run query kernel
+
+      speed_query_kernel<Filter, Key, Val><<<test_filter->get_num_blocks(query_nitems), test_filter->get_block_size(query_nitems)>>>(test_filter, query_keys, dev_vals, query_nitems, misses+3, misses+4);
+
+      cudaDeviceSynchronize();
+
+      //get new items
+
+      Key * new_keys = generate_data<Key>(delete_nitems);
+
+      for (uint64_t i=0; i< delete_nitems; i++){
+         host_keys[i+start_of_deletes] = new_keys[i];
+      }
+
+      //cudaMemcpy(host_keys+start_of_deletes, new_keys, delete_nitems*sizeof(Key), cudaMemcpyHostToHost);
+
+      cudaMemcpy(dev_keys, host_keys+start_of_deletes, delete_nitems*sizeof(Key), cudaMemcpyHostToDevice);
+
+      cudaDeviceSynchronize();
+
+
+
+
+      //add to filter and main keys.
+
+      speed_insert_with_delete_kernel<Filter, Key, Val><<<test_filter->get_num_blocks(delete_nitems),test_filter->get_block_size(delete_nitems)>>>(test_filter, dev_keys, dev_vals, delete_nitems, misses+5);
+   
+      cudaDeviceSynchronize();
+
+      printf("End of round %d: Insert fails: %llu, delete misses: %llu, delete false matching: %llu, False negatives: %llu, false positives: %llu, re-add misses %llu\n", i, misses[0], misses[1], misses[2], misses[3], misses[4], misses[5]);
+
+
+      for (int j=0; j< 6; j++){
+         misses[j] = 0;
+      }
+
+      cudaDeviceSynchronize();
+
+
+   }
+
 
    // //and delete half
 
-   auto delete_start = std::chrono::high_resolution_clock::now();
-   speed_delete_kernel<Filter, Key, Val><<<test_filter->get_num_blocks(nitems/2), test_filter->get_block_size(nitems/2)>>>(test_filter, dev_keys, nitems/2, misses+1, misses+2);
+
+ 
+   // double insert_throughput = 1.0*nitems/elapsed(insert_start, insert_end);
+
+   // double query_throughput = .5*nitems/elapsed(query_start, query_end);
+
+   // double delete_throughput = .5*nitems/elapsed(delete_start, delete_end);
+
+   // double readd_throughput = .5*nitems/elapsed(readd_start, readd_end);
+
+   // printf("Insert throughput: %f, delete throughput: %f, query throughput: %f, readd throughput: %f\n", insert_throughput, delete_throughput, query_throughput, readd_throughput);
 
 
-   cudaDeviceSynchronize();
-
-   auto delete_end = std::chrono::high_resolution_clock::now();
-
-
-   // //and query.
-
-   cudaDeviceSynchronize();
-
-   cudaMemcpy(dev_keys, host_keys, nitems*sizeof(Key), cudaMemcpyHostToDevice);
-   cudaMemcpy(dev_vals, host_vals, nitems*sizeof(Val), cudaMemcpyHostToDevice);
-
-
-   uint64_t fill_after = test_filter->get_fill();
-
-   cudaDeviceSynchronize();
-
-   auto query_start = std::chrono::high_resolution_clock::now();
-
-   speed_query_kernel<Filter, Key, Val><<<test_filter->get_num_blocks(nitems/2), test_filter->get_block_size(nitems/2)>>>(test_filter, dev_keys+nitems/2, dev_vals+nitems/2, nitems/2, misses+3, misses+4);
-
-   cudaDeviceSynchronize();
-
-   auto query_end = std::chrono::high_resolution_clock::now();
-
-   cudaMemcpy(dev_keys, host_keys, nitems*sizeof(Key), cudaMemcpyHostToDevice);
-   cudaMemcpy(dev_vals, host_vals, nitems*sizeof(Val), cudaMemcpyHostToDevice);
-
-
-   cudaDeviceSynchronize();
-
-   auto readd_start = std::chrono::high_resolution_clock::now();
-
-
-   //and final insert step..
-   speed_insert_with_delete_kernel<Filter, Key, Val><<<test_filter->get_num_blocks(nitems/2),test_filter->get_block_size(nitems/2)>>>(test_filter, dev_keys, dev_vals, nitems/2, misses+5);
-   
-   cudaDeviceSynchronize();
-
-   auto readd_end = std::chrono::high_resolution_clock::now();
-
-   uint64_t final_fill = test_filter->get_fill();
-
-
-   printf("Insert fails: %llu, delete misses: %llu, delete false matching: %llu, False negatives: %llu, false positives: %llu, re-add misses %llu\n", misses[0], misses[1], misses[2], misses[3], misses[4], misses[5]);
-
-   double insert_throughput = 1.0*nitems/elapsed(insert_start, insert_end);
-
-   double query_throughput = .5*nitems/elapsed(query_start, query_end);
-
-   double delete_throughput = .5*nitems/elapsed(delete_start, delete_end);
-
-   double readd_throughput = .5*nitems/elapsed(readd_start, readd_end);
-
-   printf("Insert throughput: %f, delete throughput: %f, query throughput: %f, readd throughput: %f\n", insert_throughput, delete_throughput, query_throughput, readd_throughput);
-
-
-   printf("Fill before: %llu, fill_after: %llu, %f ... Final fill: %llu\n", fill_before, fill_after, 1.0*fill_after/fill_before, final_fill);
+   //printf("Fill before: %llu, fill_after: %llu, %f ... Final fill: %llu\n", fill_before, fill_after, 1.0*fill_after/fill_before, final_fill);
    cudaDeviceSynchronize();
 
    cudaFree(misses);
@@ -803,57 +847,28 @@ int main(int argc, char** argv) {
    // printf("2^28\n");
    // test_speed<table_type, uint64_t, uint64_t>(&first_size_28);
 
-   int nbits = 28;
-
-
-   //build very tiny test
-   //poggers::sizing::variadic_size test_size_24 (24);
-
-   // //printf("22 size: %llu\n", test_size_24.total());
-   //test_del_batched<del_TCF_noback, uint64_t, uint8_t>(&test_size_24);
-   // test_speed_batched<tcqf, uint64_t, uint16_t>("results/test_24", generate_size(24), 20);
-   // test_speed_batched<tcqf, uint64_t, uint16_t>("results/test_26", generate_size(26), 20);
-   // test_speed_batched<tcqf, uint64_t, uint16_t>("results/test_28", generate_size(28), 20);
-   // test_speed_batched<tcqf, uint64_t, uint16_t>("results/test_30", generate_size(30), 20);
-
-   // poggers::sizing::size_in_num_slots<2> tiny_bucket_size (24, 8);
-
-   // test_del_batched<del_TCF, uint64_t, uint16_t>(&tiny_bucket_size);
-
-
-   //cudaDeviceSynchronize();
-
-
-
-   //poggers::sizing::size_in_num_slots<1> bucket_size (1ULL<<nbits);
-
-   //test_del_false_negative<del_TCF_noback, uint64_t, uint16_t, poggers::sizing::size_in_num_slots<1>>(&bucket_size);
-
-   //delete_tests<del_TCF_noback, uint64_t, uint16_t>(&bucket_size);
-
-   // poggers::sizing::size_in_num_slots<1> bucket_size_noback (1ULL<<nbits);
-
-
-   // delete_tests<del_TCF_noback, uint64_t, uint16_t>(&bucket_size_noback);
-
-
-   for (int i = 0; i< 1; i++){
-
-      poggers::sizing::size_in_num_slots<2> bucket_size_2 (1ULL<<nbits, (1ULL <<nbits)/100);
-
-
-      delete_tests<del_TCF, uint64_t, uint16_t>(&bucket_size_2);
+   if (argc < 2) {
+      fprintf(stderr, "Please specify the log of the number of items to test with.\n");
+      exit(1);
 
    }
 
-   for (int i = 0; i< 1; i++){
-
-      poggers::sizing::size_in_num_slots<2> bucket_size_2 (1ULL<<nbits, (1ULL <<nbits)/100);
+   int nbits = atoi(argv[1]);
 
 
-      delete_tests<del_TCF_small, uint64_t, uint8_t>(&bucket_size_2);
+   poggers::sizing::size_in_num_slots<2> bucket_size_2 (1ULL<<nbits, 2ULL*(1ULL <<nbits)/100);
 
-   }
+
+   sawtooth_test<del_TCF_small, uint64_t, uint8_t>(&bucket_size_2, 50, 2);
+
+
+   // for (int i = 0; i< 1; i++){
+
+     
+
+   //    delete_tests<del_TCF_small, uint64_t, uint8_t>(&bucket_size_2);
+
+   // }
 
    // poggers::sizing::variadic_size test_size_24_tcf ((1ULL << nbits), (1ULL << nbits)/100);
 

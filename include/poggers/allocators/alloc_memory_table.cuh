@@ -1,6 +1,6 @@
-#ifndef EXT_VEB_TREE
-#define EXT_VEB_TREE
-//A CUDA implementation of the Extending Van Emde Boas tree, made by Hunter McCoy (hunter@cs.utah.edu)
+#ifndef ALLOC_TABLE
+#define ALLOC_TABLE
+//A CUDA implementation of the alloc table, made by Hunter McCoy (hunter@cs.utah.edu)
 //Copyright (C) 2023 by Hunter McCoy
 
 //Permission is hereby granted, free of charge, to any person obtaining a copy of this software 
@@ -18,10 +18,8 @@
 // WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE
 // OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+//The alloc table is an array of uint64_t, uint64_t pairs that store
 
-//The Extending Van Emde Boas Tree, or EVEB, is a data structure that supports efficient data grouping and allocation/deallocation based on use.
-//given a target size and a memory chunk size, the tree dynamically pulls/pushes chunks to the free list based on usage.
-//the metadata supports up to the maximum size passed in, and persists so that the true structure does not mutate over the runtime.
 
 
 //inlcudes
@@ -38,61 +36,145 @@
 
 
 
-//thank you interwebs https://leimao.github.io/blog/Proper-CUDA-Error-Checking/
-#define CHECK_CUDA_ERROR(val) check((val), #val, __FILE__, __LINE__)
-template <typename T>
-void check(T err, const char* const func, const char* const file,
-           const int line)
-{
-    if (err != cudaSuccess)
-    {
-        std::cerr << "CUDA Runtime Error at: " << line  << ":" << std::endl << file  << std::endl;
-        std::cerr << cudaGetErrorString(err) << " " << func << std::endl;
-        // We don't exit when we encounter CUDA errors in this example.
-        std::exit(EXIT_FAILURE);
-    }
-}
-
 #ifndef DEBUG_PRINTS
 #define DEBUG_PRINTS 0
 #endif
-
-#define EXT_VEB_RESTART_CUTOFF 30
-
-#define EXT_VEB_GLOBAL_LOAD 1
-#define EXT_VEB_MAX_ATTEMPTS 15
 
 namespace poggers {
 
 namespace allocators {
 
 
-template<uint64_t bytes_per_chunk, uint64_t alloc_size>
-struct extending_veb_allocator {
+//alloc table associates chunks of memory with trees
+
+//using uint16_t as there shouldn't be that many trees.
+
+//register atomically inserst tree num, or registers memory from chunk_tree.
 
 
-
-	sub_veb_tree * trees;
-
-	
+template<uint64_t bytes_per_chunk>
+struct alloc_table {
 
 
-	static_assert(bytes_per_chunk % alloc_size == 0);
+	using my_type = alloc_table<bytes_per_chunk>;
+
+	uint16_t * chunk_ids;
+
+	static __host__ my_type * generate_on_device(){
+
+		my_type * host_version;
+
+		cudaMallocHost((void **)&host_version, sizeof(my_type));
 
 
-	__host__ uint64_t get_max_veb_chunks(){
+		uint64_t num_chunks = poggers::utils::get_max_chunks<bytes_per_chunk>();
 
-		size_t mem_total;
-		size_t mem_free;
-		cudaMemGetInfo  (&mem_free, &mem_total);
+		printf("Booting memory table with %llu chunks\n", num_chunks);
 
-		return mem_total;
+		uint16_t * ext_chunks;
+
+		cudaMalloc((void **)&ext_chunks, sizeof(uint16_t)*num_chunks);
+
+
+		cudaMemset(ext_chunks, ~0U, sizeof(uint16_t)*num_chunks);
+
+		host_version->chunk_ids = ext_chunks;
+
+		my_type * dev_version;
+
+		cudaMalloc((void **)&dev_version, sizeof(my_type));
+
+		cudaMemcpy(dev_version, host_version, sizeof(my_type), cudaMemcpyHostToDevice);
+
+		cudaDeviceSynchronize();
+
+		cudaFreeHost(host_version);
+
+
+		return dev_version;
+
+
+	}
+
+	static __host__ my_type * generate_on_device(uint64_t max_bytes){
+
+		my_type * host_version;
+
+		cudaMallocHost((void **)&host_version, sizeof(my_type));
+
+
+		uint64_t num_chunks = poggers::utils::get_max_chunks<bytes_per_chunk>(max_bytes);
+
+		printf("Booting memory table with %llu chunks\n", num_chunks);
+
+		uint16_t * ext_chunks;
+
+		cudaMalloc((void **)&ext_chunks, sizeof(uint16_t)*num_chunks);
+
+
+		cudaMemset(ext_chunks, ~0U, sizeof(uint16_t)*num_chunks);
+
+		host_version->chunk_ids = ext_chunks;
+
+		my_type * dev_version;
+
+		cudaMalloc((void **)&dev_version, sizeof(my_type));
+
+		cudaMemcpy(dev_version, host_version, sizeof(my_type), cudaMemcpyHostToDevice);
+
+		cudaDeviceSynchronize();
+
+		cudaFreeHost(host_version);
+
+
+		return dev_version;
+
+
+	}
+
+	static __host__ void free_on_device(my_type * dev_version){
+
+		my_type * host_version;
+
+		cudaMallocHost((void **)&host_version, sizeof(my_type));
+
+		cudaMemcpy(host_version, dev_version, sizeof(my_type), cudaMemcpyDeviceToHost);
+
+
+		cudaDeviceSynchronize();
+
+		cudaFree(host_version->chunk_ids);
+
+		cudaFree(dev_version);
+
+		cudaFreeHost(host_version);
+
+
+	}
+
+	//register a tree component
+	__device__ void register_tree(uint64_t block, uint16_t id){
+
+		chunk_ids[block] = id;
+
+	}
+
+	//register a block from the table.
+	__device__ void register_size(uint64_t block, uint16_t size){
+
+		size+=16;
+
+		chunk_ids[block] = size;
+
+	}
+
+	__device__ void get_tree_size(uint64_t block, uint16_t&id, uint16_t&size){
+		return;
 	}
 
 
 
-
-}
+};
 
 
 

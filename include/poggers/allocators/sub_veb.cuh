@@ -1,5 +1,5 @@
-#ifndef SUB_sub_veb_tree
-#define SUB_sub_veb_tree
+#ifndef SUB_VEB_TREE
+#define SUB_VEB_TREE
 //A CUDA implementation of the Van Emde Boas tree, made by Hunter McCoy (hunter@cs.utah.edu)
 //Copyright (C) 2023 by Hunter McCoy
 
@@ -31,20 +31,7 @@
 #include <poggers/allocators/alloc_utils.cuh>
 #include <poggers/hash_schemes/murmurhash.cuh>
 
-//thank you interwebs https://leimao.github.io/blog/Proper-CUDA-Error-Checking/
-#define CHECK_CUDA_ERROR(val) check((val), #val, __FILE__, __LINE__)
-template <typename T>
-void check(T err, const char* const func, const char* const file,
-           const int line)
-{
-    if (err != cudaSuccess)
-    {
-        std::cerr << "CUDA Runtime Error at: " << line  << ":" << std::endl << file  << std::endl;
-        std::cerr << cudaGetErrorString(err) << " " << func << std::endl;
-        // We don't exit when we encounter CUDA errors in this example.
-        std::exit(EXIT_FAILURE);
-    }
-}
+//thank you interwebs https://leimao.github.io/blog/Proper-CUDA-Error-Checking
 
 #ifndef DEBUG_PRINTS
 #define DEBUG_PRINTS 0
@@ -68,26 +55,9 @@ namespace allocators {
 #define SET_BIT_MASK(index) ((1ULL << index))
 
 
-//cudaMemset is being weird
-__global__ void init_bits(uint64_t * bits, uint64_t items_in_universe){
-
-	uint64_t tid = threadIdx.x +blockIdx.x*blockDim.x;
-
-	if (tid >= items_in_universe) return;
-
-	uint64_t high = tid/64;
-
-	uint64_t low = tid % 64;
-
-	atomicOr((unsigned long long int *)&bits[high], SET_BIT_MASK(low));
-
-	//bits[tid] = ~(0ULL);
-
-}
-
 
 template <typename sub_veb_tree_kernel_type>
-__global__ void veb_report_fill_kernel(sub_veb_tree_kernel_type * tree, uint64_t num_threads, uint64_t * fill_count){
+__global__ void sub_veb_report_fill_kernel(sub_veb_tree_kernel_type * tree, uint64_t num_threads, uint64_t * fill_count){
 
 	uint64_t tid = threadIdx.x+blockIdx.x*blockDim.x;
 
@@ -110,7 +80,7 @@ __global__ void veb_report_fill_kernel(sub_veb_tree_kernel_type * tree, uint64_t
 //with the power of builtin __ll commands (mostly __ffsll) we can recalculate those in constant time on the blocks
 // which *should* be faster than a random memory load, as even the prefetch is going to be at least one cycle to launch
 // this saves ~66% memory with no overheads!
-struct layer{
+struct sub_layer{
 
 	//make these const later
 	uint64_t universe_size;
@@ -170,13 +140,13 @@ struct layer{
 		bits = nullptr;
 	}
 
-	__host__ static void free_on_device(layer * dev_layer){
+	__host__ static void free_on_device(sub_layer * dev_layer){
 
-		layer * host_layer;
+		sub_layer * host_layer;
 
-		cudaMallocHost((void **)&host_layer, sizeof(layer));
+		cudaMallocHost((void **)&host_layer, sizeof(sub_layer));
 
-		cudaMemcpy(host_layer, dev_layer, sizeof(layer), cudaMemcpyDeviceToHost);
+		cudaMemcpy(host_layer, dev_layer, sizeof(sub_layer), cudaMemcpyDeviceToHost);
 
 		cudaDeviceSynchronize();
 
@@ -264,7 +234,7 @@ struct sub_veb_tree {
 	uint64_t seed;
 	uint64_t total_universe;
 	int num_layers;
-	layer * layers;
+	sub_layer * layers;
 
 	//if all pointers point to nullptr 
 	//how big are we?
@@ -281,7 +251,7 @@ struct sub_veb_tree {
 		//round up but always assume
 		int ext_num_layers = (max_height-1)/6+1;
 
-		bytes += ext_num_layers*sizeof(layer);
+		bytes += ext_num_layers*sizeof(sub_layer);
 
 		return bytes;
 
@@ -298,7 +268,7 @@ struct sub_veb_tree {
 		//round up but always assume
 		int ext_num_layers = (max_height-1)/6+1;
 
-		bytes += ext_num_layers*sizeof(layer);
+		bytes += ext_num_layers*sizeof(sub_layer);
 
 		return bytes;
 
@@ -323,7 +293,7 @@ struct sub_veb_tree {
 
 		tree->seed = ext_seed;
 
-		tree->layers = (layer *) ( (uint64_t ) memory + sizeof(sub_veb_tree));
+		tree->layers = (sub_layer *) ( (uint64_t ) memory + sizeof(sub_veb_tree));
 
 		uint64_t ext_universe_size = universe;
 
@@ -642,7 +612,7 @@ struct sub_veb_tree {
 
 		uint64_t num_threads = max_value/64;
 
-		veb_report_fill_kernel<sub_veb_tree><<<(num_threads-1)/512+1, 512>>>(this, num_threads, fill_count);
+		sub_veb_report_fill_kernel<sub_veb_tree><<<(num_threads-1)/512+1, 512>>>(this, num_threads, fill_count);
 
 		cudaDeviceSynchronize();
 

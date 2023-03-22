@@ -23,7 +23,7 @@
 #endif
 
 
-//The sub allocator is a powerful tool for requesting memory in parallel
+//The sub allocator is a tool for requesting memory in parallel
 //several sub allocators exist in parallel within the main memory manager, 
 // and assist threads with finding smaller allocations quickly
 // threads are assigned a sub_allocator 

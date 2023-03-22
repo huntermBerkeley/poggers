@@ -105,13 +105,20 @@ __global__ void dev_version_cleanup_kernel(tree_type * tree, bit_allocator * bal
 
 }
 
-template<uint64_t bytes_per_chunk, uint64_t alloc_size>
-struct extending_veb_allocator {
+
+//removing the size has a couple of benefits.
+//all trees can no go in an array - simplifies system.
+//calculation not necessary for most types, especially as blocks do not understand sizing.
+
+//need to add block chunks.
+template<uint64_t bytes_per_chunk>
+struct extending_veb_allocator_nosize {
 
 
-	using my_type = extending_veb_allocator<bytes_per_chunk, alloc_size>;
+	using my_type = extending_veb_allocator_nosize<bytes_per_chunk>;
 
 	uint64_t max_segments;
+	uint64_t alloc_size;
 
 
 	veb_tree * active_trees;
@@ -122,36 +129,28 @@ struct extending_veb_allocator {
 
 	void ** memory_segments;
 
-	
-
-
-	static_assert(bytes_per_chunk % alloc_size == 0);
-
-
-	static __host__ uint64_t get_max_veb_chunks(){
-
-		return poggers::utils::get_max_chunks<bytes_per_chunk>();
-
-	}
 
 
 	//boot the tree.
-	static __host__ my_type * generate_on_device(uint64_t ext_seed){
+	static __host__ my_type * generate_on_device(uint64_t ext_alloc_size, uint64_t ext_seed){
 
 
 
+		assert(bytes_per_chunk % alloc_size == 0);
 
-		uint64_t num_allocs_per_segment = bytes_per_chunk/alloc_size;
+
+		uint64_t num_allocs_per_segment = bytes_per_chunk/ext_alloc_size;
 
 
 		my_type * host_version;
 
 		cudaMallocHost((void **)&host_version, sizeof(my_type));
 
-		uint64_t max_chunks = get_max_veb_chunks();
+		return poggers::utils::get_max_chunks<bytes_per_chunk>();
 
 
 		host_version->max_segments = max_chunks;
+		host_version->alloc_size = ext_alloc_size;
 
 		uint64_t size_of_sub_tree = sub_veb_tree::get_size_bytes_noarray(num_allocs_per_segment);
 
@@ -174,7 +173,7 @@ struct extending_veb_allocator {
 		host_version->memory_segments = ext_memory_segments;
 
 
-		printf("Tree with %llu bytes per chunk and %llu alloc size has %llu total chunks and %llu num_allocs_per_segment\n", bytes_per_chunk, alloc_size, max_chunks, num_allocs_per_segment);
+		printf("Tree with %llu bytes per chunk and %llu alloc size has %llu total chunks and %llu num_allocs_per_segment\n", bytes_per_chunk, ext_alloc_size, max_chunks, num_allocs_per_segment);
 
 
 		my_type * dev_version;
@@ -197,6 +196,73 @@ struct extending_veb_allocator {
 
 
 	}
+
+
+		static __host__ my_type * generate_on_device(uint64_t ext_alloc_size, uint64_t ext_seed, uint64_t max_bytes){
+
+
+
+		assert(bytes_per_chunk % alloc_size == 0);
+
+
+		uint64_t num_allocs_per_segment = bytes_per_chunk/ext_alloc_size;
+
+
+		my_type * host_version;
+
+		cudaMallocHost((void **)&host_version, sizeof(my_type));
+
+		return poggers::utils::get_max_chunks<bytes_per_chunk>(max_bytes);
+
+
+		host_version->max_segments = max_chunks;
+		host_version->alloc_size = ext_alloc_size;
+
+		uint64_t size_of_sub_tree = sub_veb_tree::get_size_bytes_noarray(num_allocs_per_segment);
+
+		sub_veb_tree * dev_trees;
+
+		cudaMalloc((void **)&dev_trees, max_chunks*size_of_sub_tree);
+
+
+		uint64_t * dev_counters;
+		cudaMalloc((void **)&dev_counters, sizeof(uint64_t)*max_chunks);
+
+		void ** ext_memory_segments;
+
+		cudaMalloc((void **)&ext_memory_segments, sizeof(void *)*max_chunks);
+
+
+		host_version->active_trees = veb_tree::generate_on_device(max_chunks, ext_seed);
+		host_version->trees = dev_trees;
+		host_version->counters = dev_counters;
+		host_version->memory_segments = ext_memory_segments;
+
+
+		printf("Tree with %llu bytes per chunk and %llu alloc size has %llu total chunks and %llu num_allocs_per_segment\n", bytes_per_chunk, ext_alloc_size, max_chunks, num_allocs_per_segment);
+
+
+		my_type * dev_version;
+
+		cudaMalloc((void **)&dev_version, sizeof(my_type));
+
+		cudaMemcpy(dev_version, host_version, sizeof(my_type), cudaMemcpyHostToDevice);
+
+		cudaDeviceSynchronize();
+
+
+		init_subtree_kernel<my_type><<<(max_chunks-1)/512+1, 512>>>(dev_version);
+
+		cudaFreeHost(host_version);
+
+		cudaDeviceSynchronize();
+
+		return dev_version;
+
+
+
+	}
+
 
 
 
